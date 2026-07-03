@@ -1,0 +1,25 @@
+{
+  "name": "zbiorkomapa",
+  "version": "1.0.0",
+  "description": "Interaktywna wizualizacja tras komunikacji miejskiej w Poznaniu",
+  "license": "MIT",
+  "author": "Daniel Mroczek",
+  "homepage": "https://danielmroczek.github.io/zbiorkomapa/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danielmroczek/zbiorkomapa.git"
+  },
+  "bugs": {
+    "url": "https://github.com/danielmroczek/zbiorkomapa/issues"
+  },
+  "type": "module",
+  "scripts": {
+    "download": "node scripts/downloader.js",
+    "process": "node scripts/processor.js",
+    "download:audio": "node scripts/downloadAudioMappings.js",
+    "build": "npm run download && npm run download:audio && npm run process"
+  },
+  "dependencies": {
+    "unzipper": "^0.12.5"
+  }
+}
