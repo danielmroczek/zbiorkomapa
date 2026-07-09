@@ -104,6 +104,14 @@ function getRouteTypeString(routeType) {
   return typeMap[routeType] || 'BUS';
 }
 
+function normalizeLookupValue(value) {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\//g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
 function parseRouteDescStops(routeDesc) {
   // Parse route_desc to get ordered list of stops/streets for each direction
   // Format: "STOP1 - Street1 - Street2 - STOP2^Annotation|STOP2 - Street3 - STOP1^Annotation"
@@ -200,34 +208,41 @@ async function main() {
     // Build audio lookup map: normalized stop name -> audio_id
     // Key formats: "poznań|pl. ratajskiego", "koziegłowy|krótka", etc.
     const audioLookup = new Map();
-    const audioLookupByCode = new Map(); // Additional lookup by stop_code
+    const audioLookupExceptions = new Map([
+      ['wilczak serbska', 'P02B2']
+    ]);
     for (const audio of audioData) {
       if (!audio.audio_id || !audio.nazwa_przystanku) continue;
       
       // Create lookup by stop name (case-insensitive)
-      const normalizedName = audio.nazwa_przystanku.toLowerCase().trim();
-      const location = audio.miejscowosc ? audio.miejscowosc.toLowerCase().trim() : '';
+      const originalName = normalizeLookupValue(audio.nazwa_przystanku);
+      const normalizedName = normalizeLookupValue(audio.nazwa_przystanku);
+      const location = audio.miejscowosc ? normalizeLookupValue(audio.miejscowosc) : '';
+      const normalizedLocation = normalizeLookupValue(audio.miejscowosc);
       
       // Store with location prefix if available
       if (location) {
-        const key = `${location}|${normalizedName}`;
+        const key = `${location}|${originalName}`;
+        const normalizedKey = `${normalizedLocation}|${normalizedName}`;
         audioLookup.set(key, audio.audio_id);
+        audioLookup.set(normalizedKey, audio.audio_id);
       }
       
       // Also store without location for fallback
       if (!audioLookup.has(normalizedName)) {
         audioLookup.set(normalizedName, audio.audio_id);
       }
+      if (!audioLookup.has(originalName)) {
+        audioLookup.set(originalName, audio.audio_id);
+      }
       
-      // Store by audio_id for code-based lookup
-      audioLookupByCode.set(audio.audio_id.toLowerCase(), audio.audio_id);
     }
     console.log(`  Słownik audio: ${audioLookup.size} wpisów`);
     
     // Build stop name -> stop mapping (multiple stops can have same name)
     const stopsByName = new Map();
     for (const stop of stops) {
-      const normalizedName = stop.stop_name.toLowerCase().trim();
+      const normalizedName = normalizeLookupValue(stop.stop_name);
       if (!stopsByName.has(normalizedName)) {
         stopsByName.set(normalizedName, []);
       }
@@ -313,6 +328,17 @@ async function main() {
 
     // For each route, collect all directions and their data
     const routeData = [];
+    const audioMatchingStats = {
+      totalStops: 0,
+      matchedStops: 0,
+      unmatchedStops: 0,
+      strategies: {
+        exception: 0,
+        cityPrefix: 0,
+        poznanPrefix: 0,
+        partialMatch: 0
+      }
+    };
 
     for (const [routeId, routeTrips] of tripsByRoute) {
       // Find route info - O(1) lookup
@@ -334,12 +360,12 @@ async function main() {
         // Check if the extracted direction name appears in the official direction pattern
         const isOfficialDirection = directionNames.some(officialName => {
           const officialClean = officialName.replace(/\^[^|]*/g, '').trim();
-          const officialLower = officialClean.toLowerCase();
-          const directionLower = directionName.toLowerCase();
+          const officialLower = normalizeLookupValue(officialClean);
+          const directionLower = normalizeLookupValue(directionName);
           
           // For patterns like "A - B", check if this is the origin (A) or destination (B)
           if (officialClean.includes(' - ')) {
-            const parts = officialClean.split(' - ').map(p => p.trim().toLowerCase());
+            const parts = officialClean.split(' - ').map(p => normalizeLookupValue(p));
             const origin = parts[0];
             const destination = parts[parts.length - 1];
             
@@ -374,7 +400,7 @@ async function main() {
         const parts = dirName.split(' - ');
         if (parts.length >= 2) {
           const destination = parts[parts.length - 1].trim(); // Last part is destination
-          directionNameMap.set(destination.toLowerCase(), dirName);
+          directionNameMap.set(normalizeLookupValue(destination), dirName);
         }
       }
       
@@ -384,7 +410,7 @@ async function main() {
         const dirDesc = routeDescDirections[i];
         if (dirDesc.length > 0) {
           // Get the destination (last stop) from route_desc
-          const destination = dirDesc[dirDesc.length - 1].toLowerCase();
+          const destination = normalizeLookupValue(dirDesc[dirDesc.length - 1]);
           directionNameToStopsMap.set(destination, dirDesc);
         }
       }
@@ -434,8 +460,8 @@ async function main() {
         
         // Get the expected first stop name from route_desc based on destination
         // The destination in route_desc should match the trip_headsign (direction)
-        const expectedStopNamesFromDesc = directionNameToStopsMap.get(direction.toLowerCase()) || expectedStopNamesFromDescByIndex || [];
-        const expectedFirstStopName = expectedStopNamesFromDesc.length > 0 ? expectedStopNamesFromDesc[0].toLowerCase() : null;
+        const expectedStopNamesFromDesc = directionNameToStopsMap.get(normalizeLookupValue(direction)) || expectedStopNamesFromDescByIndex || [];
+        const expectedFirstStopName = expectedStopNamesFromDesc.length > 0 ? normalizeLookupValue(expectedStopNamesFromDesc[0]) : null;
         
         for (const trip of dirTrips) {
           const tripStopTimes = stopTimesByTrip.get(trip.trip_id) || [];
@@ -444,7 +470,7 @@ async function main() {
           // Count how many expected stops from route_desc are in this trip
           let matchScore = 0;
           for (const expectedName of expectedStopNamesFromDesc) {
-            const normalizedName = expectedName.toLowerCase();
+            const normalizedName = normalizeLookupValue(expectedName);
             const matchingStops = stopsByName.get(normalizedName);
             if (matchingStops) {
               for (const stop of matchingStops) {
@@ -466,7 +492,7 @@ async function main() {
             const firstStopId = sortedStops[0].stop_id;
             const firstStop = stopById.get(firstStopId);
             if (firstStop) {
-              const firstStopName = firstStop.stop_name.toLowerCase().trim();
+              const firstStopName = normalizeLookupValue(firstStop.stop_name);
               // Check if first stop name contains expected name or vice versa
               if (firstStopName === expectedFirstStopName || 
                   firstStopName.includes(expectedFirstStopName) || 
@@ -498,16 +524,22 @@ async function main() {
           for (const stopTime of sortedStopTimes) {
             const stop = stopById.get(stopTime.stop_id);
             if (stop) {
+              audioMatchingStats.totalStops++;
+
               // Try to find audio_id for this stop using multiple strategies
               let audioId = null;
-              const stopName = stop.stop_name.toLowerCase().trim();
-              const stopCode = stop.stop_code ? stop.stop_code.toLowerCase() : null;
+              const stopName = normalizeLookupValue(stop.stop_name);
+              const normalizedStopName = normalizeLookupValue(stop.stop_name);
               
-              // Strategy 1: Check if stop_code matches audio_id directly (e.g., P0BBA)
-              if (stopCode && audioLookupByCode.has(stopCode)) {
-                audioId = audioLookupByCode.get(stopCode);
+              // Strategy 1: Check for explicit manual overrides first
+              if (!audioId) {
+                const exceptionAudioId = audioLookupExceptions.get(stopName);
+                if (exceptionAudioId) {
+                  audioId = exceptionAudioId;
+                  audioMatchingStats.strategies.exception++;
+                }
               }
-              
+
               // Strategy 2: Try to extract city from stop_name and match with location prefix
               if (!audioId) {
                 // Check if stop_name starts with a city prefix like "Koziegłowy " or "Luboń "
@@ -518,59 +550,42 @@ async function main() {
                   const key = `${possibleCity}|${nameWithoutCity}`;
                   if (audioLookup.has(key)) {
                     audioId = audioLookup.get(key);
+                    audioMatchingStats.strategies.cityPrefix++;
                   }
                 }
               }
               
               // Strategy 3: Try with "Poznań" prefix (most common case)
               if (!audioId) {
-                const poznanKey = `poznań|${stopName}`;
+                const poznanKey = `poznań|${normalizedStopName}`;
                 if (audioLookup.has(poznanKey)) {
                   audioId = audioLookup.get(poznanKey);
+                  audioMatchingStats.strategies.poznanPrefix++;
                 }
               }
               
-              // Strategy 4: Try name-only lookup (for unique names or Poznań stops without city prefix)
-              if (!audioId && audioLookup.has(stopName)) {
-                audioId = audioLookup.get(stopName);
-              }
-              
-              // Strategy 5: Try splitting by "/" (e.g., "Suchy Las/Sprzeczna" → city="Suchy Las", name="Sprzeczna")
-              if (!audioId && stopName.includes('/')) {
-                const parts = stopName.split('/').map(p => p.trim()).filter(p => p.length > 0);
-                if (parts.length >= 2) {
-                  // Try first part as city, second as stop name
-                  const city = parts[0].toLowerCase();
-                  const name = parts[1].toLowerCase();
-                  const key = `${city}|${name}`;
-                  if (audioLookup.has(key)) {
-                    audioId = audioLookup.get(key);
-                  }
-                  
-                  // Also try reverse (in case format is different)
-                  if (!audioId) {
-                    const key2 = `${name}|${city}`;
-                    if (audioLookup.has(key2)) {
-                      audioId = audioLookup.get(key2);
-                    }
-                  }
-                }
-              }
-              
-              // Strategy 6: Try partial match - check if any audio name contains the stop name
+              // Strategy 4: Try partial match only if the candidate is a strong fit
               if (!audioId) {
                 for (const [key, value] of audioLookup) {
                   const audioName = key.includes('|') ? key.split('|')[1] : key;
                   if (audioName === stopName || audioName.includes(stopName) || stopName.includes(audioName)) {
-                    // Verify it's a good match (not just a common word)
-                    if (stopName.length > 3 && audioName.length > 3) {
+                    // Avoid overly generic matches like "serbska" when the actual stop is "wilczak/serbska"
+                    const isGeneric = stopName.includes('/') && (audioName.length <= 3 || audioName === 'serbska' || audioName === 'wilczak');
+                    if (!isGeneric && stopName.length > 3 && audioName.length > 3) {
                       audioId = value;
+                      audioMatchingStats.strategies.partialMatch++;
                       break;
                     }
                   }
                 }
               }
               
+              if (audioId) {
+                audioMatchingStats.matchedStops++;
+              } else {
+                audioMatchingStats.unmatchedStops++;
+              }
+
               routeStops.push({
                 stop_id: stop.stop_id,
                 stop_name: stop.stop_name.replace(/"/g, ''),
@@ -591,7 +606,7 @@ async function main() {
 
         // Get direction name by matching destination with direction key
         // Try to find matching direction_name from the map
-        let directionName = directionNameMap.get(direction.toLowerCase());
+        let directionName = directionNameMap.get(normalizeLookupValue(direction));
         
         // Fallback to first available direction_name or trip_headsign
         if (!directionName) {
@@ -643,6 +658,14 @@ async function main() {
       const outputFile = path.join(outputDir, `${routeId}.json`);
       fs.writeFileSync(outputFile, JSON.stringify(routeObj, null, 2), 'utf8');
       console.log(`  Zapisano: ${outputFile} (${directions.size} kierunki, ${totalStops} przystanków)`);
+    }
+
+    console.log('\nStatystyki dopasowania audio_id:');
+    console.log(`  przystanki: ${audioMatchingStats.totalStops}`);
+    console.log(`  dopasowane: ${audioMatchingStats.matchedStops}`);
+    console.log(`  brak dopasowania: ${audioMatchingStats.unmatchedStops}`);
+    for (const [strategyName, count] of Object.entries(audioMatchingStats.strategies)) {
+      console.log(`  ${strategyName}: ${count}`);
     }
 
     // Write routes index
