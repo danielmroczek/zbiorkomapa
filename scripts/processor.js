@@ -218,7 +218,9 @@ async function main() {
     // Key formats: "poznań|pl. ratajskiego", "koziegłowy|krótka", etc.
     const audioLookup = new Map();
     const audioLookupExceptions = new Map([
-      ['wilczak serbska', 'P02B2']
+      ['wilczak serbska', 'P02B2'],
+      ['święty marcin', 'P0371'],
+      ['św. marcin', 'P0371']
     ]);
     for (const audio of audioData) {
       const hasStopName = Boolean(audio.nazwa_przystanku && String(audio.nazwa_przystanku).trim());
