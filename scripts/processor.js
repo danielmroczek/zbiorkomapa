@@ -221,28 +221,34 @@ async function main() {
       ['wilczak serbska', 'P02B2']
     ]);
     for (const audio of audioData) {
-      if (!audio.audio_id || !audio.nazwa_przystanku) continue;
+      const hasStopName = Boolean(audio.nazwa_przystanku && String(audio.nazwa_przystanku).trim());
+      const hasLocation = Boolean(audio.miejscowosc && String(audio.miejscowosc).trim());
+      if (!audio.audio_id || (!hasStopName && !hasLocation)) continue;
       
       // Create lookup by stop name (case-insensitive)
-      const originalName = normalizeLookupValue(audio.nazwa_przystanku);
-      const normalizedName = normalizeLookupValue(audio.nazwa_przystanku);
-      const location = audio.miejscowosc ? normalizeLookupValue(audio.miejscowosc) : '';
-      const normalizedLocation = normalizeLookupValue(audio.miejscowosc);
+      const originalName = hasStopName ? normalizeLookupValue(audio.nazwa_przystanku) : '';
+      const normalizedName = hasStopName ? normalizeLookupValue(audio.nazwa_przystanku) : '';
+      const location = hasLocation ? normalizeLookupValue(audio.miejscowosc) : '';
+      const normalizedLocation = hasLocation ? normalizeLookupValue(audio.miejscowosc) : '';
       
       // Store with location prefix if available
       if (location) {
-        const key = `${location}|${originalName}`;
-        const normalizedKey = `${normalizedLocation}|${normalizedName}`;
+        const key = hasStopName ? `${location}|${originalName}` : `${location}|`;
+        const normalizedKey = hasStopName ? `${normalizedLocation}|${normalizedName}` : `${normalizedLocation}|`;
         audioLookup.set(key, audio.audio_id);
         audioLookup.set(normalizedKey, audio.audio_id);
+        audioLookup.set(location, audio.audio_id);
+        audioLookup.set(normalizedLocation, audio.audio_id);
       }
       
       // Also store without location for fallback
-      if (!audioLookup.has(normalizedName)) {
-        audioLookup.set(normalizedName, audio.audio_id);
-      }
-      if (!audioLookup.has(originalName)) {
-        audioLookup.set(originalName, audio.audio_id);
+      if (hasStopName) {
+        if (!audioLookup.has(normalizedName)) {
+          audioLookup.set(normalizedName, audio.audio_id);
+        }
+        if (!audioLookup.has(originalName)) {
+          audioLookup.set(originalName, audio.audio_id);
+        }
       }
       
     }
@@ -344,6 +350,7 @@ async function main() {
       strategies: {
         exception: 0,
         locationSlash: 0,
+        locationOnly: 0,
         cityPrefix: 0,
         poznanPrefix: 0,
         partialMatch: 0
@@ -573,9 +580,9 @@ async function main() {
 
               // Strategy 2: Try exact match with location/name format like "suchy las|sprzeczna"
               if (!audioId) {
-                const slashMatch = rawStopName.match(/^([a-zążśźćęółń]+(?:\s+[a-zążśźćęółń]+)*)\s*\/\s*(.+)$/i);
+                const slashMatch = rawStopName.match(/^(.+?)\s*\/\s*(.+)$/i);
                 if (slashMatch) {
-                  const location = normalizeLookupValue(slashMatch[1]);
+                  const location = normalizeLookupValue(slashMatch[1]).replace(/\/$/, '');
                   const stopPart = normalizeLookupValue(slashMatch[2]);
                   const key = `${location}|${stopPart}`;
                   if (audioLookup.has(key)) {
@@ -585,7 +592,15 @@ async function main() {
                 }
               }
 
-              // Strategy 3: Try to extract city from stop_name and match with location prefix
+              // Strategy 3: Try direct location-only match for entries like "szlachecin"
+              if (!audioId) {
+                if (audioLookup.has(stopName)) {
+                  audioId = audioLookup.get(stopName);
+                  audioMatchingStats.strategies.locationOnly++;
+                }
+              }
+
+              // Strategy 4: Try to extract city from stop_name and match with location prefix
               if (!audioId) {
                 // Check if stop_name starts with a city prefix like "Koziegłowy " or "Luboń "
                 const cityMatch = stopName.match(/^([a-zążśźćęółń]+)\s+/i);
@@ -600,7 +615,7 @@ async function main() {
                 }
               }
               
-              // Strategy 4: Try with "Poznań" prefix (most common case)
+              // Strategy 5: Try with "Poznań" prefix (most common case)
               if (!audioId) {
                 const poznanKey = `poznań|${normalizedStopName}`;
                 if (audioLookup.has(poznanKey)) {
@@ -609,7 +624,7 @@ async function main() {
                 }
               }
               
-              // Strategy 5: Try partial match only if the candidate is a strong fit
+              // Strategy 6: Try partial match only if the candidate is a strong fit
               if (!audioId) {
                 for (const [key, value] of audioLookup) {
                   const audioName = key.includes('|') ? key.split('|')[1] : key;

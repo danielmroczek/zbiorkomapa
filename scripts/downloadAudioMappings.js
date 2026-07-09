@@ -37,6 +37,10 @@ function cleanStopName(value) {
     return '';
   }
 
+  if (/^\d+$/.test(cleaned)) {
+    return '';
+  }
+
   return cleaned.replace(/\s+\d+$/, '').trim();
 }
 
