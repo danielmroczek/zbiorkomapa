@@ -1,780 +1,972 @@
 <!DOCTYPE html>
 <html lang="pl">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trasa autobusu - Poznań</title>
-    <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;700&family=Inter&display=swap');
-        
-        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
-        #map { height: 100vh; width: 100%; }
-        .info-panel {
-            position: absolute; top: 10px; right: 10px;
-            background: white; padding: 15px; border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2); z-index: 1000; max-width: 300px;
-        }
-        .info-panel h2 { margin: 0 0 10px 0; color: #333; display: flex; align-items: center; gap: 10px; }
-        .route-badge {
-            display: inline-flex; align-items: center; justify-content: center;
-            font-family: 'Alumni Sans', sans-serif; font-weight: 700;
-            font-size: 32px;
-            width: 40px; height: 40px;
-            border-radius: 50%;
-            transition: all 0.2s ease;
-        }
-        .route-badge.bus {
-            width: auto; min-width: 44px; height: 40px;
-            padding: 0 12px;
-            border-radius: 2px;
-        }
-        .route-badge.light-bg {
-            border: 1px solid;
-        }
-        .route-info { font-size: 14px; color: #666; }
-        .keyboard-hint { font-size: 11px; color: #999; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; }
-        .kbd { display: inline-block; padding: 2px 6px; font-size: 10px; font-family: monospace; background: #f5f5f5; border: 1px solid #ddd; border-radius: 3px; margin: 0 2px; }
-        .route-controls { margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee; }
-        .control-group { margin-bottom: 10px; }
-        .control-group label { display: block; font-size: 12px; margin-bottom: 3px; color: #555; }
-        select { width: 100%; padding: 5px; font-size: 14px; border: 1px solid #ccc; border-radius: 3px; }
-        .stop-label {
-            background: white; border-radius: 0; border: 1px solid black;
-            padding: .1em .3em; text-transform: uppercase;
-            font-size: var(--stop-label-font-size, 8px);
-            font-weight: 700; white-space: nowrap; box-shadow: none;
-            cursor: pointer; pointer-events: auto;
-        }
-        .stop-label.leaflet-tooltip-left::before { border-left-color: black; }
-        .stop-label.leaflet-tooltip-top::before { border-top-color: black; }
-        .stop-label.leaflet-tooltip-right::before { border-right-color: black; }
-        .stop-label.leaflet-tooltip-bottom::before { border-bottom-color: black; }
-        
-        /* Print info box base styles (shared screen + print) */
-        .print-info-box {
-            position: absolute; bottom: 10mm; left: 10mm;
-            background: white; border: 2px solid #333; padding: 10px 15px;
-            font-family: 'Inter', sans-serif; font-size: 12px; z-index: 10000;
-        }
-        
-        /* Print info box position classes */
-        .print-info-box.print-top { bottom: auto; top: 10mm; }
-        .print-info-box.print-top-left { bottom: auto; top: 10mm; left: 10mm; }
-        .print-info-box.print-top-right { bottom: auto; top: 10mm; right: 10mm; left: auto; }
-        .print-info-box.print-bottom-left { bottom: 10mm; left: 10mm; }
-        .print-info-box.print-bottom-right { bottom: 10mm; right: 10mm; left: auto; }
-        .print-route-number { font-size: 24px; font-weight: 700; color: #333; margin-bottom: 5px; }
-        .print-route-direction { font-size: 14px; font-weight: 600; color: #555; margin-bottom: 5px; }
-        .print-route-details { font-size: 11px; color: #666; margin-bottom: 3px; }
-        .print-dates { font-size: 10px; color: #888; margin-top: 5px; }
-        
-        @media screen {
-            .print-info-box { display: none; }
-            .print-info-box.preview-visible { display: block; opacity: 0.7; }
-        }
-        
-        @media print {
-            .info-panel { display: none !important; }
-            .leaflet-tile-pane { opacity: 0.3 !important; }
-            .leaflet-control-zoom, .leaflet-control-attribution { display: none !important; }
-            .print-info-box { visibility: visible !important; page-break-inside: avoid; }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trasa autobusu - Poznań</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;700&family=Inter&display=swap');
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+
+    .info-panel {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: white;
+      padding: 15px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+      z-index: 1000;
+      max-width: 300px;
+    }
+
+    .info-panel h2 {
+      margin: 0 0 10px 0;
+      color: #333;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .route-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Alumni Sans', sans-serif;
+      font-weight: 700;
+      font-size: 32px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      transition: all 0.2s ease;
+    }
+
+    .route-badge.bus {
+      width: auto;
+      min-width: 44px;
+      height: 40px;
+      padding: 0 12px;
+      border-radius: 2px;
+    }
+
+    .route-badge.light-bg {
+      border: 1px solid;
+    }
+
+    .route-info {
+      font-size: 14px;
+      color: #666;
+    }
+
+    .keyboard-hint {
+      font-size: 11px;
+      color: #999;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+    }
+
+    .kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-family: monospace;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      margin: 0 2px;
+    }
+
+    .route-controls {
+      margin-top: 15px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+    }
+
+    .control-group {
+      margin-bottom: 10px;
+    }
+
+    .control-group label {
+      display: block;
+      font-size: 12px;
+      margin-bottom: 3px;
+      color: #555;
+    }
+
+    select {
+      width: 100%;
+      padding: 5px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+    }
+
+    .stop-label {
+      background: white;
+      border-radius: 0;
+      border: 1px solid black;
+      padding: .1em .3em;
+      text-transform: uppercase;
+      font-size: var(--stop-label-font-size, 8px);
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: none;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .stop-label.leaflet-tooltip-left::before {
+      border-left-color: black;
+    }
+
+    .stop-label.leaflet-tooltip-top::before {
+      border-top-color: black;
+    }
+
+    .stop-label.leaflet-tooltip-right::before {
+      border-right-color: black;
+    }
+
+    .stop-label.leaflet-tooltip-bottom::before {
+      border-bottom-color: black;
+    }
+
+    /* Print info box base styles (shared screen + print) */
+    .print-info-box {
+      position: absolute;
+      bottom: 10mm;
+      left: 10mm;
+      background: white;
+      border: 2px solid #333;
+      padding: 10px 15px;
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      z-index: 10000;
+    }
+
+    /* Print info box position classes */
+    .print-info-box.print-top {
+      bottom: auto;
+      top: 10mm;
+    }
+
+    .print-info-box.print-top-left {
+      bottom: auto;
+      top: 10mm;
+      left: 10mm;
+    }
+
+    .print-info-box.print-top-right {
+      bottom: auto;
+      top: 10mm;
+      right: 10mm;
+      left: auto;
+    }
+
+    .print-info-box.print-bottom-left {
+      bottom: 10mm;
+      left: 10mm;
+    }
+
+    .print-info-box.print-bottom-right {
+      bottom: 10mm;
+      right: 10mm;
+      left: auto;
+    }
+
+    .print-route-number {
+      font-size: 24px;
+      font-weight: 700;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .print-route-direction {
+      font-size: 14px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 5px;
+    }
+
+    .print-route-details {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 3px;
+    }
+
+    .print-dates {
+      font-size: 10px;
+      color: #888;
+      margin-top: 5px;
+    }
+
+    @media screen {
+      .print-info-box {
+        display: none;
+      }
+
+      .print-info-box.preview-visible {
+        display: block;
+        opacity: 0.7;
+      }
+    }
+
+    @media print {
+      .info-panel {
+        display: none !important;
+      }
+
+      .leaflet-tile-pane {
+        opacity: 0.3 !important;
+      }
+
+      .leaflet-control-zoom,
+      .leaflet-control-attribution {
+        display: none !important;
+      }
+
+      .print-info-box {
+        visibility: visible !important;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
 </head>
+
 <body x-data="busApp()" x-init="init()">
 
-    <div id="map"></div>
+  <div id="map"></div>
 
-    <div class="info-panel">
-        <h2>
-            <span x-text="routeTypeEmoji">🚌</span>
-            <span class="route-badge" 
-                  :class="badgeClass"
-                  :style="badgeStyle"
-                  x-text="shortName">-</span>
-        </h2>
-        <div class="route-controls">
-            <div class="control-group">
-                <label for="route-select">Wybierz linię:</label>
-                <select id="route-select" x-model="selectedRouteId" @change="onRouteChange()">
-                    <option value="" disabled x-show="routes.length === 0">Ładowanie...</option>
-                    <template x-for="route in routes" :key="route.route_id">
-                        <option :value="route.route_id" x-text="route.short_name.replace(/&quot;/g, '').trim() + ' (' + (route.type === 'TRAM' ? 'Tramwaj' : 'Autobus') + ')'"></option>
-                    </template>
-                </select>
-            </div>
-            <div class="control-group">
-                <label for="direction-select">Wybierz kierunek:</label>
-                <select id="direction-select" x-model.number="selectedDirectionIdx" :disabled="!currentRoute" @change="onDirectionChange()">
-                    <option value="" disabled x-show="!currentRoute">Wybierz linię</option>
-                    <template x-for="(dir, idx) in directions" :key="idx">
-                        <option :value="idx" x-text="dir.direction_name.replace(/&quot;/g, '').trim()"></option>
-                    </template>
-                </select>
-            </div>
-        </div>
-        <div class="route-info" x-show="currentDirection">
-            <strong>Trasa:</strong><br>
-            <span x-text="routeName">-</span><br><br>
-            <strong>Długość trasy:</strong> <span x-text="routeLength">-</span> km<br>
-            <strong>Liczba przystanków:</strong> <span x-text="stopCount">-</span><br>
-            <strong>Operator:</strong> <span x-text="agencyName">-</span>
-            <div class="control-group" style="margin-top: 15px;">
-                <label for="font-size-select">Rozmiar czcionki (px):</label>
-                <input id="font-size-select" type="number" min="6" max="20" step="1" x-model.number="fontSize" @input="onFontSizeChange()" style="width: 70px; padding: 5px; font-size: 14px; border: 1px solid #ccc; border-radius: 3px;">
-            </div>
-            <div class="control-group" style="margin-top: 10px;">
-                <label for="print-position-select">Pozycja ramki (druk):</label>
-                <select id="print-position-select" x-model="printPosition" @change="onPrintPositionChange()">
-                    <option value="bottom-left">Dół lewo (domyślnie)</option>
-                    <option value="bottom-right">Dół prawo</option>
-                    <option value="top-left">Góra lewo</option>
-                    <option value="top-right">Góra prawo</option>
-                </select>
-            </div>
-            <div class="control-group" style="margin-top: 10px;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="print-preview-checkbox" style="width: auto; margin: 0;" x-model="printPreview" @change="onPrintPreviewChange()">
-                    <span>Pokaż ramkę na ekranie</span>
-                </label>
-            </div>
-            <div class="keyboard-hint">
-                <strong>Skróty:</strong><br>
-                <span class="kbd">→</span> / <span class="kbd">Shift+</span><span class="kbd">&gt;</span> Następny<br>
-                <span class="kbd">←</span> / <span class="kbd">Shift+</span><span class="kbd">&lt;</span> Poprzedni<br><br>
-                <strong>Audio:</strong><br>
-                <span class="kbd">Klik</span> na przystanek lub etykietę<br>
-                <span class="kbd">Prawy klik</span> na etykietę - obróć
-            </div>
-        </div>
+  <div class="info-panel">
+    <h2>
+      <span x-text="routeTypeEmoji">🚌</span>
+      <span class="route-badge" :class="badgeClass" :style="badgeStyle" x-text="shortName">-</span>
+    </h2>
+    <div class="route-controls">
+      <div class="control-group">
+        <label for="route-select">Wybierz linię:</label>
+        <select id="route-select" x-model="selectedRouteId" @change="onRouteChange()">
+          <option value="" disabled x-show="routes.length === 0">Ładowanie...</option>
+          <template x-for="route in routes" :key="route.route_id">
+            <option :value="route.route_id"
+              x-text="route.short_name.replace(/&quot;/g, '').trim() + ' (' + (route.type === 'TRAM' ? 'Tramwaj' : 'Autobus') + ')'">
+            </option>
+          </template>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="direction-select">Wybierz kierunek:</label>
+        <select id="direction-select" x-model.number="selectedDirectionIdx" :disabled="!currentRoute"
+          @change="onDirectionChange()">
+          <option value="" disabled x-show="!currentRoute">Wybierz linię</option>
+          <template x-for="(dir, idx) in directions" :key="idx">
+            <option :value="idx" x-text="dir.direction_name.replace(/&quot;/g, '').trim()"></option>
+          </template>
+        </select>
+      </div>
     </div>
-
-    <!-- Print info box -->
-    <div class="print-info-box" id="print-info-box" :class="printBoxClasses">
-        <div class="print-route-number" x-text="printRouteNumber">-</div>
-        <div class="print-route-direction" x-text="printDirectionName">-</div>
-        <div class="print-route-details">
-            <span x-text="stopCount">0</span> przystanków •
-            <span x-text="routeLength">0</span> km
-        </div>
-        <div class="print-route-details" x-text="agencyName">-</div>
-        <div class="print-dates" x-text="printDates">-</div>
+    <div class="route-info" x-show="currentDirection">
+      <strong>Trasa:</strong><br>
+      <span x-text="routeName">-</span><br><br>
+      <strong>Długość trasy:</strong> <span x-text="routeLength">-</span> km<br>
+      <strong>Liczba przystanków:</strong> <span x-text="stopCount">-</span><br>
+      <strong>Operator:</strong> <span x-text="agencyName">-</span>
+      <div class="control-group" style="margin-top: 15px;">
+        <label for="font-size-select">Rozmiar czcionki (px):</label>
+        <input id="font-size-select" type="number" min="6" max="20" step="1" x-model.number="fontSize"
+          @input="onFontSizeChange()"
+          style="width: 70px; padding: 5px; font-size: 14px; border: 1px solid #ccc; border-radius: 3px;">
+      </div>
+      <div class="control-group" style="margin-top: 10px;">
+        <label for="print-position-select">Pozycja ramki (druk):</label>
+        <select id="print-position-select" x-model="printPosition" @change="onPrintPositionChange()">
+          <option value="bottom-left">Dół lewo (domyślnie)</option>
+          <option value="bottom-right">Dół prawo</option>
+          <option value="top-left">Góra lewo</option>
+          <option value="top-right">Góra prawo</option>
+        </select>
+      </div>
+      <div class="control-group" style="margin-top: 10px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="print-preview-checkbox" style="width: auto; margin: 0;" x-model="printPreview"
+            @change="onPrintPreviewChange()">
+          <span>Pokaż ramkę na ekranie</span>
+        </label>
+      </div>
+      <div class="keyboard-hint">
+        <strong>Skróty:</strong><br>
+        <span class="kbd">→</span> / <span class="kbd">Shift+</span><span class="kbd">&gt;</span> Następny<br>
+        <span class="kbd">←</span> / <span class="kbd">Shift+</span><span class="kbd">&lt;</span> Poprzedni<br><br>
+        <strong>Audio:</strong><br>
+        <span class="kbd">Klik</span> na przystanek lub etykietę<br>
+        <span class="kbd">Prawy klik</span> na etykietę - obróć
+      </div>
     </div>
+  </div>
 
-    <script>
-        function busApp() {
-            return {
-                // Route data
-                routes: [],
-                selectedRouteId: '',
-                currentRoute: null,
-                directions: [],
-                selectedDirectionIdx: 0,
-                currentDirection: null,
+  <!-- Print info box -->
+  <div class="print-info-box" id="print-info-box" :class="printBoxClasses">
+    <div class="print-route-number" x-text="printRouteNumber">-</div>
+    <div class="print-route-direction" x-text="printDirectionName">-</div>
+    <div class="print-route-details">
+      <span x-text="stopCount">0</span> przystanków •
+      <span x-text="routeLength">0</span> km
+    </div>
+    <div class="print-route-details" x-text="agencyName">-</div>
+    <div class="print-dates" x-text="printDates">-</div>
+  </div>
 
-                // Display state
-                panelTitle: '🚌 Poznań - Wybierz linię',
-                shortName: '-',
-                routeTypeEmoji: '🚌',
-                badgeClass: '',
-                badgeStyle: {},
-                routeName: '-',
-                routeLength: '-',
-                stopCount: '-',
-                agencyName: '-',
-                printRouteNumber: '-',
-                printDirectionName: '-',
-                printDates: '-',
-                printPosition: 'bottom-left',
-                printPreview: false,
+  <script>
+    function busApp() {
+      return {
+        // Route data
+        routes: [],
+        selectedRouteId: '',
+        currentRoute: null,
+        directions: [],
+        selectedDirectionIdx: 0,
+        currentDirection: null,
 
-                // Font size
-                fontSize: 11,
+        // Display state
+        panelTitle: '🚌 Poznań - Wybierz linię',
+        shortName: '-',
+        routeTypeEmoji: '🚌',
+        badgeClass: '',
+        badgeStyle: {},
+        routeName: '-',
+        routeLength: '-',
+        stopCount: '-',
+        agencyName: '-',
+        printRouteNumber: '-',
+        printDirectionName: '-',
+        printDates: '-',
+        printPosition: 'bottom-left',
+        printPreview: false,
 
-                // Map internals (not reactive)
-                map: null,
-                currentPolyline: null,
-                currentMarkers: [],
-                currentLabels: [],
+        // Font size
+        fontSize: 11,
 
-                // Audio player singleton
-                audioPlayer: null,
+        // Map internals (not reactive)
+        map: null,
+        currentPolyline: null,
+        currentMarkers: [],
+        currentLabels: [],
 
-                LABEL_OFFSETS: {
-                    'right': { direction: 'right', offset: [5, 0] },
-                    'left': { direction: 'left', offset: [-5, 0] },
-                    'top': { direction: 'top', offset: [0, -5] },
-                    'bottom': { direction: 'bottom', offset: [0, 5] }
-                },
+        // Audio player singleton
+        audioPlayer: null,
+        voiceAnnouncementsBaseUrl: 'https://www.ztm.poznan.pl/pl/dla-deweloperow/getVoiceAnnouncements/?file=',
 
-                // Helper: Convert hex to RGB
-                hexToRgb(hex) {
-                    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-                    return result ? {
-                        r: parseInt(result[1], 16),
-                        g: parseInt(result[2], 16),
-                        b: parseInt(result[3], 16)
-                    } : null;
-                },
+        LABEL_OFFSETS: {
+          'right': { direction: 'right', offset: [5, 0] },
+          'left': { direction: 'left', offset: [-5, 0] },
+          'top': { direction: 'top', offset: [0, -5] },
+          'bottom': { direction: 'bottom', offset: [0, 5] }
+        },
 
-                // Computed
-                get printBoxClasses() {
-                    const classes = ['preview-visible'].filter(c => this.printPreview);
-                    if (this.printPosition !== 'bottom-left') classes.push('print-' + this.printPosition);
-                    return classes.join(' ');
-                },
+        getVoiceAnnouncementUrl(fileName) {
+          return `${this.voiceAnnouncementsBaseUrl}${encodeURIComponent(fileName)}`;
+        },
 
-                async init() {
-                    this.initMap();
-                    this.initAudioPlayer();
-                    this.restoreSettings();
-                    await this.loadRoutesIndex();
-                    this.restoreLastRoute();
-                },
+        getStopAudioUrl(stop) {
+          const audioId = stop?.audio_id || stop?.stop_code || stop?.stop_id;
+          return this.getVoiceAnnouncementUrl(`${audioId}.mp3`);
+        },
 
-                initAudioPlayer() {
-                    // Singleton audio player with lazy loading and caching
-                    this.audioPlayer = {
-                        audioCache: new Map(),
-                        currentAudio: null,
-                        isLoading: false,
-                        
-                        async play(url, isLastStop = false) {
-                            // Stop any currently playing audio
-                            if (this.currentAudio) {
-                                this.currentAudio.pause();
-                                this.currentAudio = null;
-                            }
-                            
-                            // Wait if already loading
-                            if (this.isLoading) {
-                                await new Promise(resolve => setTimeout(resolve, 100));
-                                return this.play(url, isLastStop);
-                            }
-                            
-                            try {
-                                // Get or load audio
-                                let audio = this.audioCache.get(url);
-                                
-                                if (!audio) {
-                                    this.isLoading = true;
-                                    audio = new Audio(url);
-                                    audio.addEventListener('canplaythrough', () => {
-                                        this.isLoading = false;
-                                    });
-                                    audio.addEventListener('error', () => {
-                                        this.isLoading = false;
-                                        console.error('Failed to load audio:', url);
-                                    });
-                                    this.audioCache.set(url, audio);
-                                }
-                                
-                                // Play main audio
-                                this.currentAudio = audio;
-                                audio.currentTime = 0;
-                                await audio.play();
-                                
-                                // Play "przystanek końcowy" after main audio if last stop
-                                if (isLastStop) {
-                                    const lastStopUrl = 'https://www.ztm.poznan.pl/pl/dla-deweloperow/getVoiceAnnouncements/?file=KONCTR.mp3';
-                                    let lastStopAudio = this.audioCache.get(lastStopUrl);
-                                    
-                                    if (!lastStopAudio) {
-                                        this.isLoading = true;
-                                        lastStopAudio = new Audio(lastStopUrl);
-                                        lastStopAudio.addEventListener('canplaythrough', () => {
-                                            this.isLoading = false;
-                                        });
-                                        this.audioCache.set(lastStopUrl, lastStopAudio);
-                                    }
-                                    
-                                    audio.addEventListener('ended', () => {
-                                        this.currentAudio = lastStopAudio;
-                                        lastStopAudio.currentTime = 0;
-                                        lastStopAudio.play().catch(e => console.error('Failed to play last stop:', e));
-                                    }, { once: true });
-                                }
-                                
-                                audio.addEventListener('ended', () => {
-                                    if (this.currentAudio === audio) {
-                                        this.currentAudio = null;
-                                    }
-                                }, { once: true });
-                                
-                            } catch (error) {
-                                this.isLoading = false;
-                                console.error('Audio play error:', error);
-                            }
-                        }
-                    };
-                },
+        playStopAudio(stop, isLastStop = false, isFirstStop = false) {
+          if (this.audioPlayer) {
+            this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop);
+          }
+        },
 
-                initMap() {
-                    if (this.map) return;
-                    this.map = L.map('map', {
-                        doubleClickZoom: false,
-                        zoomSnap: 0.1,
-                        zoomDelta: 0.1
-                    }).setView([52.4069, 16.9299], 13);
+        // Helper: Convert hex to RGB
+        hexToRgb(hex) {
+          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+          return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+          } : null;
+        },
 
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    }).addTo(this.map);
+        // Computed
+        get printBoxClasses() {
+          const classes = ['preview-visible'].filter(c => this.printPreview);
+          if (this.printPosition !== 'bottom-left') classes.push('print-' + this.printPosition);
+          return classes.join(' ');
+        },
 
-                    this.map.on('zoomend', () => {
-                        if (this.currentLabels.length > 0) this.optimizeLabelDirections();
+        async init() {
+          this.initMap();
+          this.initAudioPlayer();
+          this.restoreSettings();
+          await this.loadRoutesIndex();
+          this.restoreLastRoute();
+        },
+
+        initAudioPlayer() {
+          const app = this;
+
+          // Singleton audio player with lazy loading and caching
+          this.audioPlayer = {
+            audioCache: new Map(),
+            currentAudio: null,
+            isLoading: false,
+
+            async play(url, isLastStop = false, isFirstStop = false) {
+              // Stop any currently playing audio
+              if (this.currentAudio) {
+                this.currentAudio.pause();
+                this.currentAudio = null;
+              }
+
+              // Wait if already loading
+              if (this.isLoading) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                return this.play(url, isLastStop, isFirstStop);
+              }
+
+              try {
+                const getOrCreateAudio = (audioUrl) => {
+                  let audio = this.audioCache.get(audioUrl);
+
+                  if (!audio) {
+                    this.isLoading = true;
+                    audio = new Audio(audioUrl);
+                    audio.addEventListener('canplaythrough', () => {
+                      this.isLoading = false;
                     });
-
-                    const mapContainer = this.map.getContainer();
-
-                    mapContainer.addEventListener('click', (event) => {
-                        const labelEl = event.target.closest?.('.stop-label');
-                        if (!labelEl) return;
-
-                        event.preventDefault();
-                        event.stopPropagation();
-
-                        const tooltip = labelEl._tooltip;
-                        if (!tooltip?.options?.marker) return;
-
-                        const stop = tooltip.options.stopData;
-                        const isLastStop = tooltip.options.isLastStop;
-                        if (stop && this.audioPlayer) {
-                            this.audioPlayer.play(
-                                `https://www.ztm.poznan.pl/pl/dla-deweloperow/getVoiceAnnouncements/?file=${encodeURIComponent((stop.audio_id || stop.stop_code || stop.stop_id) + '.mp3')}`,
-                                isLastStop
-                            );
-                        }
+                    audio.addEventListener('error', () => {
+                      this.isLoading = false;
+                      console.error('Failed to load audio:', audioUrl);
                     });
+                    this.audioCache.set(audioUrl, audio);
+                  }
 
-                    mapContainer.addEventListener('contextmenu', (event) => {
-                        const labelEl = event.target.closest?.('.stop-label');
-                        if (!labelEl) return;
+                  return audio;
+                };
 
-                        event.preventDefault();
-                        event.stopPropagation();
+                const playAudio = async (audioUrl) => {
+                  const audio = getOrCreateAudio(audioUrl);
+                  this.currentAudio = audio;
+                  audio.currentTime = 0;
+                  await audio.play();
 
-                        const tooltip = labelEl._tooltip;
-                        if (tooltip?.options?.marker) {
-                            this.flipTooltip(tooltip.options.marker);
-                        }
+                  audio.addEventListener('ended', () => {
+                    if (this.currentAudio === audio) {
+                      this.currentAudio = null;
+                    }
+                  }, { once: true });
+
+                  return audio;
+                };
+
+                const playMainAudio = async () => {
+                  const audio = await playAudio(url);
+
+                  if (isLastStop) {
+                    const lastStopUrl = app.getVoiceAnnouncementUrl('KONCTR.mp3');
+                    const lastStopAudio = getOrCreateAudio(lastStopUrl);
+
+                    audio.addEventListener('ended', () => {
+                      this.currentAudio = lastStopAudio;
+                      lastStopAudio.currentTime = 0;
+                      lastStopAudio.play().catch(e => console.error('Failed to play last stop:', e));
+                    }, { once: true });
+                  }
+                };
+
+                if (isFirstStop) {
+                  const firstStopSignalUrl = app.getVoiceAnnouncementUrl('KBING!.mp3');
+                  const firstStopAudio = await playAudio(firstStopSignalUrl);
+
+                  firstStopAudio.addEventListener('ended', () => {
+                    playMainAudio().catch(error => {
+                      this.isLoading = false;
+                      console.error('Audio play error:', error);
                     });
-
-                    // Keyboard shortcuts for navigation
-                    document.addEventListener('keydown', (e) => {
-                        // Ignore if typing in input field
-                        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
-                        
-                        if (e.key === 'ArrowRight' || (e.key === '>' && e.shiftKey)) {
-                            e.preventDefault();
-                            this.nextDirectionOrRoute();
-                        } else if (e.key === 'ArrowLeft' || (e.key === '<' && e.shiftKey)) {
-                            e.preventDefault();
-                            this.prevDirectionOrRoute();
-                        }
-                    });
-                },
-
-                restoreSettings() {
-                    const fontSize = localStorage.getItem('stopLabelFontSize');
-                    if (fontSize) {
-                        this.fontSize = parseInt(fontSize);
-                        this.setStopLabelFontSize(fontSize);
-                    }
-                    const pos = localStorage.getItem('printPosition');
-                    if (pos) this.printPosition = pos;
-                    if (localStorage.getItem('printPreview') === 'true') this.printPreview = true;
-                },
-
-                async restoreLastRoute() {
-                    const lastRoute = localStorage.getItem('lastRoute');
-                    if (lastRoute && this.routes.some(r => r.route_id === lastRoute)) {
-                        this.selectedRouteId = lastRoute;
-                        await this.onRouteChange();
-                        return;
-                    }
-
-                    if (this.routes.length > 0) {
-                        const randomRoute = this.routes[Math.floor(Math.random() * this.routes.length)];
-                        this.selectedRouteId = randomRoute.route_id;
-                        await this.onRouteChange();
-                    }
-                },
-
-                async onRouteChange() {
-                    if (!this.selectedRouteId) {
-                        this.currentRoute = null;
-                        this.directions = [];
-                        this.currentDirection = null;
-                        this.selectedDirectionIdx = 0;
-                        return;
-                    }
-
-                    const routeMeta = this.routes.find(r => r.route_id === this.selectedRouteId);
-                    if (!routeMeta) return;
-
-                    try {
-                        const response = await fetch(`./dist/${this.selectedRouteId}.json`);
-                        const routeData = await response.json();
-                        this.currentRoute = routeData;
-                        this.directions = routeData.directions;
-
-                        const shortName = routeMeta.short_name.replace(/"/g, '').trim();
-                        const routeTypeName = routeMeta.type === 'TRAM' ? 'Tramwaj' : 'Autobus';
-                        const routeTypeEmoji = routeMeta.type === 'TRAM' ? '🚋' : '🚌';
-                        this.shortName = shortName;
-                        this.routeTypeEmoji = routeTypeEmoji;
-                        
-                        // Set badge style
-                        let bgColor = '#' + routeMeta.color;
-                        let textColor = '#' + routeMeta.text_color;
-                        
-                        // Special case: #525252 with white text → treat as white background with black text + border
-                        const isSpecialGray = bgColor.toUpperCase() === '#525252' && textColor.toUpperCase() === '#FFFFFF';
-                        if (isSpecialGray) {
-                            bgColor = '#FFFFFF';
-                            textColor = '#000000';
-                        }
-                        
-                        this.badgeClass = routeMeta.type === 'TRAM' ? 'route-badge' : 'route-badge bus';
-                        this.badgeStyle = {
-                            'background-color': bgColor,
-                            'color': textColor
-                        };
-                        
-                        // Check if background is very light - add subtle border
-                        const rgb = this.hexToRgb(bgColor);
-                        if (rgb && rgb.r > 240 && rgb.g > 240 && rgb.b > 240) {
-                            this.badgeClass += ' light-bg';
-                            this.badgeStyle['border-color'] = textColor;
-                        }
-                        
-                        this.panelTitle = `${routeTypeEmoji} ${routeTypeName} nr ${shortName}`;
-                        // Restore last direction
-                        const savedDir = localStorage.getItem('lastDirection_' + this.selectedRouteId);
-                        const dirIdx = savedDir ? parseInt(savedDir) : 0;
-                        this.selectedDirectionIdx = (dirIdx >= 0 && dirIdx < this.directions.length) ? dirIdx : 0;
-
-                        localStorage.setItem('lastRoute', this.selectedRouteId);
-                        await this.onDirectionChange();
-                    } catch (error) {
-                        console.error(`Błąd ładowania danych dla linii ${this.selectedRouteId}:`, error);
-                    }
-                },
-
-                async onDirectionChange() {
-                    if (!this.currentRoute || this.selectedDirectionIdx == null) return;
-
-                    this.cleanUpMap();
-                    this.currentDirection = this.directions[this.selectedDirectionIdx];
-
-                    localStorage.setItem('lastDirection_' + this.selectedRouteId, this.selectedDirectionIdx);
-
-                    // Update display
-                    const stops = this.currentDirection.stops;
-                    const firstStop = stops.length > 0 ? (stops[0].stop_name || '').replace(/"/g, '').trim() : '?';
-                    const lastStop = stops.length > 0 ? (stops[stops.length - 1].stop_name || '').replace(/"/g, '').trim() : '?';
-                    this.routeName = firstStop + ' → ' + lastStop;
-
-                    const directionName = this.currentDirection.direction_name.replace(/"/g, '').trim();
-                    const shortName = this.currentRoute.short_name.replace(/"/g, '').trim();
-                    const routeTypeName = this.currentRoute.type === 'TRAM' ? 'Tramwaju' : 'Autobusu';
-                    document.title = `Trasa ${routeTypeName.toLowerCase()} nr ${shortName}: ${directionName}`;
-
-                    // Print info
-                    this.printRouteNumber = shortName;
-                    this.printDirectionName = directionName;
-                    this.agencyName = this.currentRoute.agency_name || 'Nieznany operator';
-                    this.stopCount = this.currentDirection.stops.length;
-                    this.routeLength = this.calcRouteLength(this.currentDirection.shape.coordinates);
-
-                    const feedInfo = this.currentRoute.feed_info || {};
-                    const startDate = (feedInfo.feed_start_date || '').replace(/"/g, '');
-                    const endDate = (feedInfo.feed_end_date || '').replace(/"/g, '');
-                    if (startDate && endDate) {
-                        const fmt = d => `${d.substring(6)}.${d.substring(4, 6)}.${d.substring(0, 4)}`;
-                        this.printDates = 'Obowiązuje: ' + fmt(startDate) + '–' + fmt(endDate);
-                    } else {
-                        this.printDates = 'Brak danych';
-                    }
-
-                    // Draw on map
-                    this.drawRoute(this.currentRoute.color, this.currentDirection.shape.coordinates);
-                    this.drawStops(this.currentRoute, this.currentDirection);
-                },
-
-                // Data loading
-                async loadRoutesIndex() {
-                    try {
-                        const response = await fetch('./dist/routes.json');
-                        this.routes = await response.json();
-                    } catch (error) {
-                        console.error('Błąd ładowania indeksu linii:', error);
-                    }
-                },
-
-                // Map operations
-                cleanUpMap() {
-                    if (this.currentPolyline) {
-                        this.map.removeLayer(this.currentPolyline);
-                        this.currentPolyline = null;
-                    }
-                    this.currentMarkers.forEach(m => this.map.removeLayer(m));
-                    this.currentMarkers = [];
-                    this.currentLabels = [];
-                },
-
-                drawRoute(color, coordinates) {
-                    this.currentPolyline = L.polyline(coordinates, {
-                        color: '#' + color,
-                        weight: 5,
-                        opacity: 0.8,
-                        lineCap: 'round',
-                        lineJoin: 'round'
-                    }).addTo(this.map);
-                    this.map.fitBounds(this.currentPolyline.getBounds(), { padding: [50, 50] });
-                },
-
-                drawStops(routeData, directionData) {
-                    this.currentMarkers = [];
-                    this.currentLabels = [];
-                    const color = '#' + routeData.color;
-                    const totalStops = directionData.stops.length;
-
-                    // Helper function to play audio for a stop
-                    const playStopAudio = (stop, isLastStop) => {
-                        const audioId = stop.audio_id || stop.stop_code || stop.stop_id;
-                        const audioUrl = `https://www.ztm.poznan.pl/pl/dla-deweloperow/getVoiceAnnouncements/?file=${encodeURIComponent(audioId + '.mp3')}`;
-                        if (this.audioPlayer) {
-                            this.audioPlayer.play(audioUrl, isLastStop);
-                        }
-                    };
-
-                    directionData.stops.forEach((stop, index) => {
-                        const stopLat = stop.stop_lat || stop.lat;
-                        const stopLng = stop.stop_lon || stop.lng;
-                        const stopNameClean = (stop.stop_name || stop.name || '').replace(/"/g, '').trim();
-                        const isLastStop = index === totalStops - 1;
-
-                        const marker = L.circleMarker([stopLat, stopLng], {
-                            radius: 6, fillColor: color, color: 'white',
-                            weight: 2, opacity: 1, fillOpacity: 1,
-                            interactive: true
-                        }).addTo(this.map);
-
-                        const stopNumber = index + 1;
-                        const content = `${stopNumber}. ${stopNameClean}`;
-
-                        const tooltip = this.createStopLabelTooltip('right', this.LABEL_OFFSETS['right'].offset, content);
-                        marker.bindTooltip(tooltip);
-                        
-                        // Store marker reference and audio data for click handling
-                        tooltip.options.marker = marker;
-                        tooltip.options.isLastStop = isLastStop;
-                        tooltip.options.stopData = stop;
-
-                        // Single click on marker or label to play audio announcement (DRY - uses playStopAudio helper)
-                        marker.on('click', () => playStopAudio(stop, isLastStop));
-
-                        this.currentLabels.push({
-                            lat: stopLat, lng: stopLng,
-                            direction: 'right', marker: marker,
-                            stopName: stopNameClean, stopNumber: stopNumber
-                        });
-                        this.currentMarkers.push(marker);
-                    });
-
-                    this.optimizeLabelDirections();
-                },
-
-                flipTooltip(marker) {
-                    const labelData = this.currentLabels.find(l => l.marker === marker);
-                    if (!labelData) return;
-
-                    const clockwise = { 'top': 'right', 'right': 'bottom', 'bottom': 'left', 'left': 'top' };
-                    const newDir = clockwise[labelData.direction];
-                    if (!newDir) return;
-
-                    marker.unbindTooltip();
-                    marker.bindTooltip(this.createStopLabelTooltip(newDir, this.LABEL_OFFSETS[newDir].offset, `${labelData.stopNumber}. ${labelData.stopName}`));
-                    labelData.direction = newDir;
-                },
-
-                createStopLabelTooltip(direction, offset, content) {
-                    return L.tooltip({
-                        permanent: true, direction: direction, offset: offset,
-                        className: 'stop-label', opacity: 1
-                    }).setContent(content);
-                },
-
-                calcRouteLength(coordinates) {
-                    let totalDistance = 0;
-                    for (let i = 1; i < coordinates.length; i++) {
-                        totalDistance += L.latLng(coordinates[i - 1]).distanceTo(L.latLng(coordinates[i]));
-                    }
-                    return (totalDistance / 1000).toFixed(2);
-                },
-
-                // Label overlap optimization
-                getLabelPixelBounds(stopLat, stopLng, direction, text) {
-                    const point = this.map.latLngToContainerPoint([stopLat, stopLng]);
-                    const offset = this.LABEL_OFFSETS[direction].offset;
-
-                    const labelEl = document.querySelector('.stop-label');
-                    const labelStyle = labelEl ? getComputedStyle(labelEl) : null;
-                    const fontSize = labelStyle ? parseFloat(labelStyle.fontSize) : 8;
-                    
-                    // Cache canvas context for text measurement
-                    let ctx = this._textMeasureCtx;
-                    if (!ctx) {
-                        ctx = document.createElement('canvas').getContext('2d');
-                        this._textMeasureCtx = ctx;
-                    }
-                    
-                    const fontFamily = labelStyle ? labelStyle.fontFamily : 'Inter, sans-serif';
-                    ctx.font = `${fontSize}px ${fontFamily}`;
-                    const textWidth = ctx.measureText(text).width;
-                    const textHeight = fontSize * 1.4;
-                    const padX = 0.3 * fontSize * 2;
-                    const padY = 0.1 * fontSize * 2;
-                    const w = textWidth + padX + 2;
-                    const h = textHeight + padY + 2;
-                    const arrowSize = 4;
-
-                    let left, top;
-                    switch (direction) {
-                        case 'right': left = point.x + offset[0] + arrowSize; top = point.y + offset[1] - h / 2; break;
-                        case 'left': left = point.x + offset[0] - arrowSize - w; top = point.y + offset[1] - h / 2; break;
-                        case 'top': left = point.x + offset[0] - w / 2; top = point.y + offset[1] - arrowSize - h; break;
-                        case 'bottom': left = point.x + offset[0] - w / 2; top = point.y + offset[1] + arrowSize; break;
-                    }
-                    return { left, top, right: left + w, bottom: top + h, w, h };
-                },
-
-                overlapArea(a, b) {
-                    if (!(a.right > b.left && b.right > a.left && a.bottom > b.top && b.bottom > a.top)) return 0;
-                    const xOverlap = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
-                    const yOverlap = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-                    return xOverlap * yOverlap;
-                },
-
-                optimizeLabelDirections() {
-                    const directions = ['right', 'left', 'top', 'bottom'];
-                    const n = this.currentLabels.length;
-                    if (n === 0) return;
-
-                    const texts = this.currentLabels.map(l => `${l.stopNumber}. ${l.stopName}`);
-                    
-                    // Pre-calculate all current bounds for optimization
-                    const currentBounds = this.currentLabels.map((label, idx) => 
-                        this.getLabelPixelBounds(label.lat, label.lng, label.direction, texts[idx])
-                    );
-
-                    for (let pass = 0; pass < 2; pass++) {
-                        for (let i = 0; i < n; i++) {
-                            const label = this.currentLabels[i];
-                            let bestDir = label.direction;
-                            let bestScore = Infinity;
-
-                            for (const dir of directions) {
-                                const testBounds = this.getLabelPixelBounds(label.lat, label.lng, dir, texts[i]);
-                                let totalOverlap = 0;
-                                for (let j = 0; j < n; j++) {
-                                    if (i === j) continue;
-                                    totalOverlap += this.overlapArea(testBounds, currentBounds[j]);
-                                }
-                                if (totalOverlap < bestScore) { bestScore = totalOverlap; bestDir = dir; }
-                            }
-
-                            if (bestDir !== label.direction) {
-                                label.direction = bestDir;
-                                label.marker.unbindTooltip();
-                                label.marker.bindTooltip(
-                                    this.createStopLabelTooltip(bestDir, this.LABEL_OFFSETS[bestDir].offset, texts[i])
-                                );
-                                // Update the cached bounds for this label
-                                currentBounds[i] = this.getLabelPixelBounds(label.lat, label.lng, bestDir, texts[i]);
-                            }
-                        }
-                    }
-                },
-
-                // Settings handlers
-                setStopLabelFontSize(size) {
-                    document.documentElement.style.setProperty('--stop-label-font-size', size);
-                },
-
-                onFontSizeChange() {
-                    const size = Math.max(6, Math.min(20, this.fontSize || 11));
-                    this.fontSize = size;
-                    this.setStopLabelFontSize(size + 'px');
-                    localStorage.setItem('stopLabelFontSize', size + 'px');
-                },
-
-                onPrintPositionChange() {
-                    localStorage.setItem('printPosition', this.printPosition);
-                },
-
-                onPrintPreviewChange() {
-                    localStorage.setItem('printPreview', this.printPreview ? 'true' : 'false');
-                },
-
-                nextDirectionOrRoute() {
-                    if (!this.currentRoute || this.directions.length === 0) return;
-                    
-                    const nextIdx = this.selectedDirectionIdx + 1;
-                    if (nextIdx < this.directions.length) {
-                        // Next direction for current route
-                        this.selectedDirectionIdx = nextIdx;
-                        this.onDirectionChange();
-                        localStorage.setItem('lastDirection_' + this.selectedRouteId, this.selectedDirectionIdx);
-                    } else {
-                        // Go to next route, first direction
-                        const routeIndex = this.routes.findIndex(r => r.route_id === this.selectedRouteId);
-                        if (routeIndex === -1) return;
-                        
-                        const nextRouteIndex = (routeIndex + 1) % this.routes.length;
-                        const nextRoute = this.routes[nextRouteIndex];
-                        
-                        this.selectedRouteId = nextRoute.route_id;
-                        this.onRouteChange().then(() => {
-                            this.selectedDirectionIdx = 0;
-                            this.onDirectionChange();
-                        });
-                    }
-                },
-
-                prevDirectionOrRoute() {
-                    if (!this.currentRoute || this.directions.length === 0) return;
-                    
-                    const prevIdx = this.selectedDirectionIdx - 1;
-                    if (prevIdx >= 0) {
-                        // Previous direction for current route
-                        this.selectedDirectionIdx = prevIdx;
-                        this.onDirectionChange();
-                        localStorage.setItem('lastDirection_' + this.selectedRouteId, this.selectedDirectionIdx);
-                    } else {
-                        // Go to previous route, last direction
-                        const routeIndex = this.routes.findIndex(r => r.route_id === this.selectedRouteId);
-                        if (routeIndex === -1) return;
-                        
-                        const prevRouteIndex = routeIndex === 0 ? this.routes.length - 1 : routeIndex - 1;
-                        const prevRoute = this.routes[prevRouteIndex];
-                        
-                        this.selectedRouteId = prevRoute.route_id;
-                        this.onRouteChange().then(() => {
-                            const routeData = this.currentRoute;
-                            this.selectedDirectionIdx = routeData.directions.length - 1;
-                            this.onDirectionChange();
-                        });
-                    }
+                  }, { once: true });
+                } else {
+                  await playMainAudio();
                 }
+
+              } catch (error) {
+                this.isLoading = false;
+                console.error('Audio play error:', error);
+              }
+            }
+          };
+        },
+
+        initMap() {
+          if (this.map) return;
+          this.map = L.map('map', {
+            doubleClickZoom: false,
+            zoomSnap: 0.1,
+            zoomDelta: 0.1
+          }).setView([52.4069, 16.9299], 13);
+
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          }).addTo(this.map);
+
+          this.map.on('zoomend', () => {
+            if (this.currentLabels.length > 0) this.optimizeLabelDirections();
+          });
+
+          const mapContainer = this.map.getContainer();
+
+          mapContainer.addEventListener('click', (event) => {
+            const labelEl = event.target.closest?.('.stop-label');
+            if (!labelEl) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const tooltip = labelEl._tooltip;
+            if (!tooltip?.options?.marker) return;
+
+            const stop = tooltip.options.stopData;
+            const isLastStop = tooltip.options.isLastStop;
+            const isFirstStop = tooltip.options.isFirstStop;
+            if (stop) {
+              this.playStopAudio(stop, isLastStop, isFirstStop);
+            }
+          });
+
+          mapContainer.addEventListener('contextmenu', (event) => {
+            const labelEl = event.target.closest?.('.stop-label');
+            if (!labelEl) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            const tooltip = labelEl._tooltip;
+            if (tooltip?.options?.marker) {
+              this.flipTooltip(tooltip.options.marker);
+            }
+          });
+
+          // Keyboard shortcuts for navigation
+          document.addEventListener('keydown', (e) => {
+            // Ignore if typing in input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+            if (e.key === 'ArrowRight' || (e.key === '>' && e.shiftKey)) {
+              e.preventDefault();
+              this.nextDirectionOrRoute();
+            } else if (e.key === 'ArrowLeft' || (e.key === '<' && e.shiftKey)) {
+              e.preventDefault();
+              this.prevDirectionOrRoute();
+            }
+          });
+        },
+
+        restoreSettings() {
+          const fontSize = localStorage.getItem('stopLabelFontSize');
+          if (fontSize) {
+            this.fontSize = parseInt(fontSize);
+            this.setStopLabelFontSize(fontSize);
+          }
+          const pos = localStorage.getItem('printPosition');
+          if (pos) this.printPosition = pos;
+          if (localStorage.getItem('printPreview') === 'true') this.printPreview = true;
+        },
+
+        async restoreLastRoute() {
+          const lastRoute = localStorage.getItem('lastRoute');
+          if (lastRoute && this.routes.some(r => r.route_id === lastRoute)) {
+            this.selectedRouteId = lastRoute;
+            await this.onRouteChange();
+            return;
+          }
+
+          if (this.routes.length > 0) {
+            const randomRoute = this.routes[Math.floor(Math.random() * this.routes.length)];
+            this.selectedRouteId = randomRoute.route_id;
+            await this.onRouteChange();
+          }
+        },
+
+        async onRouteChange() {
+          if (!this.selectedRouteId) {
+            this.currentRoute = null;
+            this.directions = [];
+            this.currentDirection = null;
+            this.selectedDirectionIdx = 0;
+            return;
+          }
+
+          const routeMeta = this.routes.find(r => r.route_id === this.selectedRouteId);
+          if (!routeMeta) return;
+
+          try {
+            const response = await fetch(`./dist/${this.selectedRouteId}.json`);
+            const routeData = await response.json();
+            this.currentRoute = routeData;
+            this.directions = routeData.directions;
+
+            const shortName = routeMeta.short_name.replace(/"/g, '').trim();
+            const routeTypeName = routeMeta.type === 'TRAM' ? 'Tramwaj' : 'Autobus';
+            const routeTypeEmoji = routeMeta.type === 'TRAM' ? '🚋' : '🚌';
+            this.shortName = shortName;
+            this.routeTypeEmoji = routeTypeEmoji;
+
+            // Set badge style
+            let bgColor = '#' + routeMeta.color;
+            let textColor = '#' + routeMeta.text_color;
+
+            // Special case: #525252 with white text → treat as white background with black text + border
+            const isSpecialGray = bgColor.toUpperCase() === '#525252' && textColor.toUpperCase() === '#FFFFFF';
+            if (isSpecialGray) {
+              bgColor = '#FFFFFF';
+              textColor = '#000000';
+            }
+
+            this.badgeClass = routeMeta.type === 'TRAM' ? 'route-badge' : 'route-badge bus';
+            this.badgeStyle = {
+              'background-color': bgColor,
+              'color': textColor
             };
+
+            // Check if background is very light - add subtle border
+            const rgb = this.hexToRgb(bgColor);
+            if (rgb && rgb.r > 240 && rgb.g > 240 && rgb.b > 240) {
+              this.badgeClass += ' light-bg';
+              this.badgeStyle['border-color'] = textColor;
+            }
+
+            this.panelTitle = `${routeTypeEmoji} ${routeTypeName} nr ${shortName}`;
+            // Restore last direction
+            const savedDir = localStorage.getItem('lastDirection_' + this.selectedRouteId);
+            const dirIdx = savedDir ? parseInt(savedDir) : 0;
+            this.selectedDirectionIdx = (dirIdx >= 0 && dirIdx < this.directions.length) ? dirIdx : 0;
+
+            localStorage.setItem('lastRoute', this.selectedRouteId);
+            await this.onDirectionChange();
+          } catch (error) {
+            console.error(`Błąd ładowania danych dla linii ${this.selectedRouteId}:`, error);
+          }
+        },
+
+        async onDirectionChange() {
+          if (!this.currentRoute || this.selectedDirectionIdx == null) return;
+
+          this.cleanUpMap();
+          this.currentDirection = this.directions[this.selectedDirectionIdx];
+
+          localStorage.setItem('lastDirection_' + this.selectedRouteId, this.selectedDirectionIdx);
+
+          // Update display
+          const stops = this.currentDirection.stops;
+          const firstStop = stops.length > 0 ? (stops[0].stop_name || '').replace(/"/g, '').trim() : '?';
+          const lastStop = stops.length > 0 ? (stops[stops.length - 1].stop_name || '').replace(/"/g, '').trim() : '?';
+          this.routeName = firstStop + ' → ' + lastStop;
+
+          const directionName = this.currentDirection.direction_name.replace(/"/g, '').trim();
+          const shortName = this.currentRoute.short_name.replace(/"/g, '').trim();
+          const routeTypeName = this.currentRoute.type === 'TRAM' ? 'Tramwaju' : 'Autobusu';
+          document.title = `Trasa ${routeTypeName.toLowerCase()} nr ${shortName}: ${directionName}`;
+
+          // Print info
+          this.printRouteNumber = shortName;
+          this.printDirectionName = directionName;
+          this.agencyName = this.currentRoute.agency_name || 'Nieznany operator';
+          this.stopCount = this.currentDirection.stops.length;
+          this.routeLength = this.calcRouteLength(this.currentDirection.shape.coordinates);
+
+          const feedInfo = this.currentRoute.feed_info || {};
+          const startDate = (feedInfo.feed_start_date || '').replace(/"/g, '');
+          const endDate = (feedInfo.feed_end_date || '').replace(/"/g, '');
+          if (startDate && endDate) {
+            const fmt = d => `${d.substring(6)}.${d.substring(4, 6)}.${d.substring(0, 4)}`;
+            this.printDates = 'Obowiązuje: ' + fmt(startDate) + '–' + fmt(endDate);
+          } else {
+            this.printDates = 'Brak danych';
+          }
+
+          // Draw on map
+          this.drawRoute(this.currentRoute.color, this.currentDirection.shape.coordinates);
+          this.drawStops(this.currentRoute, this.currentDirection);
+        },
+
+        // Data loading
+        async loadRoutesIndex() {
+          try {
+            const response = await fetch('./dist/routes.json');
+            this.routes = await response.json();
+          } catch (error) {
+            console.error('Błąd ładowania indeksu linii:', error);
+          }
+        },
+
+        // Map operations
+        cleanUpMap() {
+          if (this.currentPolyline) {
+            this.map.removeLayer(this.currentPolyline);
+            this.currentPolyline = null;
+          }
+          this.currentMarkers.forEach(m => this.map.removeLayer(m));
+          this.currentMarkers = [];
+          this.currentLabels = [];
+        },
+
+        drawRoute(color, coordinates) {
+          this.currentPolyline = L.polyline(coordinates, {
+            color: '#' + color,
+            weight: 5,
+            opacity: 0.8,
+            lineCap: 'round',
+            lineJoin: 'round'
+          }).addTo(this.map);
+          this.map.fitBounds(this.currentPolyline.getBounds(), { padding: [50, 50] });
+        },
+
+        drawStops(routeData, directionData) {
+          this.currentMarkers = [];
+          this.currentLabels = [];
+          const color = '#' + routeData.color;
+          const totalStops = directionData.stops.length;
+
+          directionData.stops.forEach((stop, index) => {
+            const stopLat = stop.stop_lat || stop.lat;
+            const stopLng = stop.stop_lon || stop.lng;
+            const stopNameClean = (stop.stop_name || stop.name || '').replace(/"/g, '').trim();
+            const isFirstStop = index === 0;
+            const isLastStop = index === totalStops - 1;
+
+            const marker = L.circleMarker([stopLat, stopLng], {
+              radius: 6, fillColor: color, color: 'white',
+              weight: 2, opacity: 1, fillOpacity: 1,
+              interactive: true
+            }).addTo(this.map);
+
+            const stopNumber = index + 1;
+            const content = `${stopNumber}. ${stopNameClean}`;
+
+            const tooltip = this.createStopLabelTooltip('right', this.LABEL_OFFSETS['right'].offset, content);
+            marker.bindTooltip(tooltip);
+
+            // Store marker reference and audio data for click handling
+            tooltip.options.marker = marker;
+            tooltip.options.isLastStop = isLastStop;
+            tooltip.options.isFirstStop = isFirstStop;
+            tooltip.options.stopData = stop;
+
+            // Single click on marker or label to play audio announcement
+            marker.on('click', () => this.playStopAudio(stop, isLastStop, isFirstStop));
+
+            this.currentLabels.push({
+              lat: stopLat, lng: stopLng,
+              direction: 'right', marker: marker,
+              stopName: stopNameClean, stopNumber: stopNumber
+            });
+            this.currentMarkers.push(marker);
+          });
+
+          this.optimizeLabelDirections();
+        },
+
+        flipTooltip(marker) {
+          const labelData = this.currentLabels.find(l => l.marker === marker);
+          if (!labelData) return;
+
+          const clockwise = { 'top': 'right', 'right': 'bottom', 'bottom': 'left', 'left': 'top' };
+          const newDir = clockwise[labelData.direction];
+          if (!newDir) return;
+
+          marker.unbindTooltip();
+          marker.bindTooltip(this.createStopLabelTooltip(newDir, this.LABEL_OFFSETS[newDir].offset, `${labelData.stopNumber}. ${labelData.stopName}`));
+          labelData.direction = newDir;
+        },
+
+        createStopLabelTooltip(direction, offset, content) {
+          return L.tooltip({
+            permanent: true, direction: direction, offset: offset,
+            className: 'stop-label', opacity: 1
+          }).setContent(content);
+        },
+
+        calcRouteLength(coordinates) {
+          let totalDistance = 0;
+          for (let i = 1; i < coordinates.length; i++) {
+            totalDistance += L.latLng(coordinates[i - 1]).distanceTo(L.latLng(coordinates[i]));
+          }
+          return (totalDistance / 1000).toFixed(2);
+        },
+
+        // Label overlap optimization
+        getLabelPixelBounds(stopLat, stopLng, direction, text) {
+          const point = this.map.latLngToContainerPoint([stopLat, stopLng]);
+          const offset = this.LABEL_OFFSETS[direction].offset;
+
+          const labelEl = document.querySelector('.stop-label');
+          const labelStyle = labelEl ? getComputedStyle(labelEl) : null;
+          const fontSize = labelStyle ? parseFloat(labelStyle.fontSize) : 8;
+
+          // Cache canvas context for text measurement
+          let ctx = this._textMeasureCtx;
+          if (!ctx) {
+            ctx = document.createElement('canvas').getContext('2d');
+            this._textMeasureCtx = ctx;
+          }
+
+          const fontFamily = labelStyle ? labelStyle.fontFamily : 'Inter, sans-serif';
+          ctx.font = `${fontSize}px ${fontFamily}`;
+          const textWidth = ctx.measureText(text).width;
+          const textHeight = fontSize * 1.4;
+          const padX = 0.3 * fontSize * 2;
+          const padY = 0.1 * fontSize * 2;
+          const w = textWidth + padX + 2;
+          const h = textHeight + padY + 2;
+          const arrowSize = 4;
+
+          let left, top;
+          switch (direction) {
+            case 'right': left = point.x + offset[0] + arrowSize; top = point.y + offset[1] - h / 2; break;
+            case 'left': left = point.x + offset[0] - arrowSize - w; top = point.y + offset[1] - h / 2; break;
+            case 'top': left = point.x + offset[0] - w / 2; top = point.y + offset[1] - arrowSize - h; break;
+            case 'bottom': left = point.x + offset[0] - w / 2; top = point.y + offset[1] + arrowSize; break;
+          }
+          return { left, top, right: left + w, bottom: top + h, w, h };
+        },
+
+        overlapArea(a, b) {
+          if (!(a.right > b.left && b.right > a.left && a.bottom > b.top && b.bottom > a.top)) return 0;
+          const xOverlap = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+          const yOverlap = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+          return xOverlap * yOverlap;
+        },
+
+        optimizeLabelDirections() {
+          const directions = ['right', 'left', 'top', 'bottom'];
+          const n = this.currentLabels.length;
+          if (n === 0) return;
+
+          const texts = this.currentLabels.map(l => `${l.stopNumber}. ${l.stopName}`);
+
+          // Pre-calculate all current bounds for optimization
+          const currentBounds = this.currentLabels.map((label, idx) =>
+            this.getLabelPixelBounds(label.lat, label.lng, label.direction, texts[idx])
+          );
+
+          for (let pass = 0; pass < 2; pass++) {
+            for (let i = 0; i < n; i++) {
+              const label = this.currentLabels[i];
+              let bestDir = label.direction;
+              let bestScore = Infinity;
+
+              for (const dir of directions) {
+                const testBounds = this.getLabelPixelBounds(label.lat, label.lng, dir, texts[i]);
+                let totalOverlap = 0;
+                for (let j = 0; j < n; j++) {
+                  if (i === j) continue;
+                  totalOverlap += this.overlapArea(testBounds, currentBounds[j]);
+                }
+                if (totalOverlap < bestScore) { bestScore = totalOverlap; bestDir = dir; }
+              }
+
+              if (bestDir !== label.direction) {
+                label.direction = bestDir;
+                label.marker.unbindTooltip();
+                label.marker.bindTooltip(
+                  this.createStopLabelTooltip(bestDir, this.LABEL_OFFSETS[bestDir].offset, texts[i])
+                );
+                // Update the cached bounds for this label
+                currentBounds[i] = this.getLabelPixelBounds(label.lat, label.lng, bestDir, texts[i]);
+              }
+            }
+          }
+        },
+
+        // Settings handlers
+        setStopLabelFontSize(size) {
+          document.documentElement.style.setProperty('--stop-label-font-size', size);
+        },
+
+        onFontSizeChange() {
+          const size = Math.max(6, Math.min(20, this.fontSize || 11));
+          this.fontSize = size;
+          this.setStopLabelFontSize(size + 'px');
+          localStorage.setItem('stopLabelFontSize', size + 'px');
+        },
+
+        onPrintPositionChange() {
+          localStorage.setItem('printPosition', this.printPosition);
+        },
+
+        onPrintPreviewChange() {
+          localStorage.setItem('printPreview', this.printPreview ? 'true' : 'false');
+        },
+
+        nextDirectionOrRoute() {
+          if (!this.currentRoute || this.directions.length === 0) return;
+
+          const nextIdx = this.selectedDirectionIdx + 1;
+          if (nextIdx < this.directions.length) {
+            // Next direction for current route
+            this.selectedDirectionIdx = nextIdx;
+            this.onDirectionChange();
+            localStorage.setItem('lastDirection_' + this.selectedRouteId, this.selectedDirectionIdx);
+          } else {
+            // Go to next route, first direction
+            const routeIndex = this.routes.findIndex(r => r.route_id === this.selectedRouteId);
+            if (routeIndex === -1) return;
+
+            const nextRouteIndex = (routeIndex + 1) % this.routes.length;
+            const nextRoute = this.routes[nextRouteIndex];
+
+            this.selectedRouteId = nextRoute.route_id;
+            this.onRouteChange().then(() => {
+              this.selectedDirectionIdx = 0;
+              this.onDirectionChange();
+            });
+          }
+        },
+
+        prevDirectionOrRoute() {
+          if (!this.currentRoute || this.directions.length === 0) return;
+
+          const prevIdx = this.selectedDirectionIdx - 1;
+          if (prevIdx >= 0) {
+            // Previous direction for current route
+            this.selectedDirectionIdx = prevIdx;
+            this.onDirectionChange();
+            localStorage.setItem('lastDirection_' + this.selectedRouteId, this.selectedDirectionIdx);
+          } else {
+            // Go to previous route, last direction
+            const routeIndex = this.routes.findIndex(r => r.route_id === this.selectedRouteId);
+            if (routeIndex === -1) return;
+
+            const prevRouteIndex = routeIndex === 0 ? this.routes.length - 1 : routeIndex - 1;
+            const prevRoute = this.routes[prevRouteIndex];
+
+            this.selectedRouteId = prevRoute.route_id;
+            this.onRouteChange().then(() => {
+              const routeData = this.currentRoute;
+              this.selectedDirectionIdx = routeData.directions.length - 1;
+              this.onDirectionChange();
+            });
+          }
         }
-    </script>
+      };
+    }
+  </script>
 </body>
+
 </html>
