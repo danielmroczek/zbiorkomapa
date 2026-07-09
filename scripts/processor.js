@@ -643,6 +643,7 @@ async function main() {
               if (audioId) {
                 audioMatchingStats.matchedStops++;
               } else {
+                audioId = 'KBING!';
                 audioMatchingStats.unmatchedStops++;
               }
 
