@@ -112,6 +112,15 @@ function normalizeLookupValue(value) {
     .replace(/\s+/g, ' ');
 }
 
+function isOnDemandStopType(value) {
+  const normalized = String(value ?? '').trim();
+  return normalized === '2' || normalized === '3';
+}
+
+function isOnDemandStopTime(stopTime) {
+  return isOnDemandStopType(stopTime?.pickup_type) || isOnDemandStopType(stopTime?.drop_off_type);
+}
+
 function parseRouteDescStops(routeDesc) {
   // Parse route_desc to get ordered list of stops/streets for each direction
   // Format: "STOP1 - Street1 - Street2 - STOP2^Annotation|STOP2 - Street3 - STOP1^Annotation"
@@ -353,6 +362,7 @@ async function main() {
       
       // Group trips by direction, but only include directions that are in the official route_long_name
       const directions = new Map();
+      const onDemandStatsByStopId = new Map();
       for (const trip of routeTrips) {
         const directionName = extractDirectionName(trip.trip_headsign);
         
@@ -387,8 +397,27 @@ async function main() {
             directions.set(directionName, []);
           }
           directions.get(directionName).push(trip);
+
+          // Aggregate stop demand stats once per route using the same trip/stop_times data.
+          // This keeps the implementation efficient and follows the GTFS rule of using a 50% threshold.
+          const tripStopTimes = stopTimesByTrip.get(trip.trip_id) || [];
+          for (const stopTime of tripStopTimes) {
+            const stopId = stopTime.stop_id;
+            const currentStats = onDemandStatsByStopId.get(stopId) || { total: 0, onDemand: 0 };
+            currentStats.total += 1;
+            if (isOnDemandStopTime(stopTime)) {
+              currentStats.onDemand += 1;
+            }
+            onDemandStatsByStopId.set(stopId, currentStats);
+          }
         }
       }
+
+      const isStopOnDemand = (stopId) => {
+        const stats = onDemandStatsByStopId.get(stopId);
+        if (!stats || stats.total === 0) return false;
+        return (stats.onDemand / stats.total) >= 0.5;
+      };
 
       // For each direction, collect unique shape_id and stops
       const directionsData = [];
@@ -586,6 +615,11 @@ async function main() {
                 audioMatchingStats.unmatchedStops++;
               }
 
+              const stopDemandStats = onDemandStatsByStopId.get(stop.stop_id);
+              const isOnDemand = stopDemandStats
+                ? (stopDemandStats.onDemand / stopDemandStats.total) >= 0.5
+                : false;
+
               routeStops.push({
                 stop_id: stop.stop_id,
                 stop_name: stop.stop_name.replace(/"/g, ''),
@@ -593,6 +627,7 @@ async function main() {
                 stop_lon: parseFloat(stop.stop_lon),
                 stop_code: stop.stop_code,
                 stop_sequence: parseInt(stopTime.stop_sequence),
+                is_on_demand: isOnDemand,
                 audio_id: audioId
               });
             }

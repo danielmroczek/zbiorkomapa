@@ -131,6 +131,11 @@
       pointer-events: auto;
     }
 
+    .stop-label.on-demand-stop-label {
+      border-style: dotted;
+      /* border-width: 2px; */
+    }
+
     .stop-label.leaflet-tooltip-left::before {
       border-left-color: black;
     }
@@ -390,7 +395,7 @@
 
         playStopAudio(stop, isLastStop = false, isFirstStop = false) {
           if (this.audioPlayer) {
-            this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop);
+            this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop, stop);
           }
         },
 
@@ -428,7 +433,7 @@
             currentAudio: null,
             isLoading: false,
 
-            async play(url, isLastStop = false, isFirstStop = false) {
+            async play(url, isLastStop = false, isFirstStop = false, stop = null) {
               // Stop any currently playing audio
               if (this.currentAudio) {
                 this.currentAudio.pause();
@@ -438,8 +443,10 @@
               // Wait if already loading
               if (this.isLoading) {
                 await new Promise(resolve => setTimeout(resolve, 100));
-                return this.play(url, isLastStop, isFirstStop);
+                return this.play(url, isLastStop, isFirstStop, stop);
               }
+
+              const isOnDemandStop = Boolean(stop?.is_on_demand);
 
               try {
                 const getOrCreateAudio = (audioUrl) => {
@@ -467,44 +474,35 @@
                   audio.currentTime = 0;
                   await audio.play();
 
-                  audio.addEventListener('ended', () => {
-                    if (this.currentAudio === audio) {
-                      this.currentAudio = null;
-                    }
-                  }, { once: true });
-
-                  return audio;
-                };
-
-                const playMainAudio = async () => {
-                  const audio = await playAudio(url);
-
-                  if (isLastStop) {
-                    const lastStopUrl = app.getVoiceAnnouncementUrl('KONCTR.mp3');
-                    const lastStopAudio = getOrCreateAudio(lastStopUrl);
-
+                  return new Promise((resolve) => {
                     audio.addEventListener('ended', () => {
-                      this.currentAudio = lastStopAudio;
-                      lastStopAudio.currentTime = 0;
-                      lastStopAudio.play().catch(e => console.error('Failed to play last stop:', e));
+                      if (this.currentAudio === audio) {
+                        this.currentAudio = null;
+                      }
+                      resolve();
                     }, { once: true });
-                  }
+                  });
                 };
+
+                const audioQueue = [];
 
                 if (isFirstStop) {
-                  const firstStopSignalUrl = app.getVoiceAnnouncementUrl('KBING!.mp3');
-                  const firstStopAudio = await playAudio(firstStopSignalUrl);
-
-                  firstStopAudio.addEventListener('ended', () => {
-                    playMainAudio().catch(error => {
-                      this.isLoading = false;
-                      console.error('Audio play error:', error);
-                    });
-                  }, { once: true });
-                } else {
-                  await playMainAudio();
+                  audioQueue.push(app.getVoiceAnnouncementUrl('KBING!.mp3'));
                 }
 
+                audioQueue.push(url);
+
+                if (isOnDemandStop) {
+                  audioQueue.push(app.getVoiceAnnouncementUrl('KZADAN.mp3'));
+                }
+
+                if (isLastStop) {
+                  audioQueue.push(app.getVoiceAnnouncementUrl('KONCTR.mp3'));
+                }
+
+                for (const audioUrl of audioQueue) {
+                  await playAudio(audioUrl);
+                }
               } catch (error) {
                 this.isLoading = false;
                 console.error('Audio play error:', error);
@@ -759,7 +757,7 @@
             const stopNumber = index + 1;
             const content = `${stopNumber}. ${stopNameClean}`;
 
-            const tooltip = this.createStopLabelTooltip('right', this.LABEL_OFFSETS['right'].offset, content);
+            const tooltip = this.createStopLabelTooltip('right', this.LABEL_OFFSETS['right'].offset, content, stop);
             marker.bindTooltip(tooltip);
 
             // Store marker reference and audio data for click handling
@@ -774,7 +772,7 @@
             this.currentLabels.push({
               lat: stopLat, lng: stopLng,
               direction: 'right', marker: marker,
-              stopName: stopNameClean, stopNumber: stopNumber
+              stopName: stopNameClean, stopNumber: stopNumber, stopData: stop
             });
             this.currentMarkers.push(marker);
           });
@@ -791,14 +789,19 @@
           if (!newDir) return;
 
           marker.unbindTooltip();
-          marker.bindTooltip(this.createStopLabelTooltip(newDir, this.LABEL_OFFSETS[newDir].offset, `${labelData.stopNumber}. ${labelData.stopName}`));
+          marker.bindTooltip(this.createStopLabelTooltip(newDir, this.LABEL_OFFSETS[newDir].offset, `${labelData.stopNumber}. ${labelData.stopName}`, labelData.stopData));
           labelData.direction = newDir;
         },
 
-        createStopLabelTooltip(direction, offset, content) {
+        createStopLabelTooltip(direction, offset, content, stopData = null) {
+          const classes = ['stop-label'];
+          if (stopData?.is_on_demand) {
+            classes.push('on-demand-stop-label');
+          }
+
           return L.tooltip({
             permanent: true, direction: direction, offset: offset,
-            className: 'stop-label', opacity: 1
+            className: classes.join(' '), opacity: 1
           }).setContent(content);
         },
 
@@ -885,7 +888,7 @@
                 label.direction = bestDir;
                 label.marker.unbindTooltip();
                 label.marker.bindTooltip(
-                  this.createStopLabelTooltip(bestDir, this.LABEL_OFFSETS[bestDir].offset, texts[i])
+                  this.createStopLabelTooltip(bestDir, this.LABEL_OFFSETS[bestDir].offset, texts[i], label.stopData)
                 );
                 // Update the cached bounds for this label
                 currentBounds[i] = this.getLabelPixelBounds(label.lat, label.lng, bestDir, texts[i]);
