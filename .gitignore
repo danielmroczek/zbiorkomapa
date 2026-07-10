@@ -1,4 +1,5 @@
 check*
+!checkAudioLinks.js
 data
 dist
 node_modules
