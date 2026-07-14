@@ -10,12 +10,18 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;700&family=Inter&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;700&family=Inter&family=Roboto&display=swap');
+    :root {
+    --line-zone-A: #33a864;
+    --line-zone-B: #d70000;
+    --line-zone-C: #e6e600;
+    --line-zone-D: #0B93F6;
+    }
 
     body {
       margin: 0;
       padding: 0;
-      font-family: 'Inter', sans-serif;
+      font-family: 'Roboto', sans-serif;
     }
 
     #map {
@@ -121,7 +127,7 @@
       background: white;
       border-radius: 0;
       border: 1px solid black;
-      padding: .1em .3em;
+      padding: .01em .2em;
       text-transform: uppercase;
       font-size: var(--stop-label-font-size, 8px);
       font-weight: 700;
@@ -129,6 +135,25 @@
       box-shadow: none;
       cursor: pointer;
       pointer-events: auto;
+    }
+
+    .stop-zone-marker {
+      width: 16px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: white;
+      border: 2px solid var(--zone-color, #333);
+      color: var(--zone-color, #333);
+      font-size: 8px;
+      font-weight: 700;
+      line-height: 1;
+      box-sizing: border-box;
+      user-select: none;
+      pointer-events: none;
+      transform: translateY(-1px);
     }
 
     .stop-label.on-demand-stop-label {
@@ -160,7 +185,6 @@
       background: white;
       border: 2px solid #333;
       padding: 10px 15px;
-      font-family: 'Inter', sans-serif;
       font-size: 12px;
       z-index: 10000;
     }
@@ -234,27 +258,27 @@
 
     @media print {
       .info-panel {
-        display: none !important;
+        display: none;
       }
 
       .leaflet-tile-pane {
-        opacity: 0.3 !important;
+        opacity: 0.3;
       }
 
       .leaflet-control-zoom,
       .leaflet-control-attribution {
-        display: none !important;
+        display: none;
       }
 
       .print-info-box {
-        visibility: visible !important;
+        visibility: visible;
         page-break-inside: avoid;
       }
     }
   </style>
 </head>
 
-<body x-data="busApp()" x-init="init()">
+<body x-data="_busApp()" x-init="init()">
 
   <div id="map"></div>
 
@@ -338,7 +362,7 @@
   </div>
 
   <script>
-    function busApp() {
+    function _busApp() {
       return {
         // Route data
         routes: [],
@@ -411,8 +435,8 @@
 
         // Computed
         get printBoxClasses() {
-          const classes = ['preview-visible'].filter(c => this.printPreview);
-          if (this.printPosition !== 'bottom-left') classes.push('print-' + this.printPosition);
+          const classes = ['preview-visible'].filter(_c => this.printPreview);
+          if (this.printPosition !== 'bottom-left') classes.push(`print-${this.printPosition}`);
           return classes.join(' ');
         },
 
@@ -578,7 +602,7 @@
         restoreSettings() {
           const fontSize = localStorage.getItem('stopLabelFontSize');
           if (fontSize) {
-            this.fontSize = parseInt(fontSize);
+            this.fontSize = parseInt(fontSize, 10);
             this.setStopLabelFontSize(fontSize);
           }
           const pos = localStorage.getItem('printPosition');
@@ -626,8 +650,8 @@
             this.routeTypeEmoji = routeTypeEmoji;
 
             // Set badge style
-            let bgColor = '#' + routeMeta.color;
-            let textColor = '#' + routeMeta.text_color;
+            let bgColor = `#${routeMeta.color}`;
+            let textColor = `#${routeMeta.text_color}`;
 
             // Special case: #525252 with white text → treat as white background with black text + border
             const isSpecialGray = bgColor.toUpperCase() === '#525252' && textColor.toUpperCase() === '#FFFFFF';
@@ -651,8 +675,8 @@
 
             this.panelTitle = `${routeTypeEmoji} ${routeTypeName} nr ${shortName}`;
             // Restore last direction
-            const savedDir = localStorage.getItem('lastDirection_' + this.selectedRouteId);
-            const dirIdx = savedDir ? parseInt(savedDir) : 0;
+            const savedDir = localStorage.getItem(`lastDirection_${this.selectedRouteId}`);
+            const dirIdx = savedDir ? parseInt(savedDir, 10) : 0;
             this.selectedDirectionIdx = (dirIdx >= 0 && dirIdx < this.directions.length) ? dirIdx : 0;
 
             localStorage.setItem('lastRoute', this.selectedRouteId);
@@ -668,13 +692,13 @@
           this.cleanUpMap();
           this.currentDirection = this.directions[this.selectedDirectionIdx];
 
-          localStorage.setItem('lastDirection_' + this.selectedRouteId, this.selectedDirectionIdx);
+          localStorage.setItem(`lastDirection_${this.selectedRouteId}`, this.selectedDirectionIdx);
 
           // Update display
           const stops = this.currentDirection.stops;
           const firstStop = stops.length > 0 ? (stops[0].stop_name || '').replace(/"/g, '').trim() : '?';
           const lastStop = stops.length > 0 ? (stops[stops.length - 1].stop_name || '').replace(/"/g, '').trim() : '?';
-          this.routeName = firstStop + ' → ' + lastStop;
+          this.routeName = `${firstStop} → ${lastStop}`;
 
           const directionName = this.currentDirection.direction_name.replace(/"/g, '').trim();
           const shortName = this.currentRoute.short_name.replace(/"/g, '').trim();
@@ -693,7 +717,7 @@
           const endDate = (feedInfo.feed_end_date || '').replace(/"/g, '');
           if (startDate && endDate) {
             const fmt = d => `${d.substring(6)}.${d.substring(4, 6)}.${d.substring(0, 4)}`;
-            this.printDates = 'Obowiązuje: ' + fmt(startDate) + '–' + fmt(endDate);
+            this.printDates = `Obowiązuje: ${fmt(startDate)}–${fmt(endDate)}`;
           } else {
             this.printDates = 'Brak danych';
           }
@@ -719,14 +743,16 @@
             this.map.removeLayer(this.currentPolyline);
             this.currentPolyline = null;
           }
-          this.currentMarkers.forEach(m => this.map.removeLayer(m));
+          for (const marker of this.currentMarkers) {
+            this.map.removeLayer(marker);
+          }
           this.currentMarkers = [];
           this.currentLabels = [];
         },
 
         drawRoute(color, coordinates) {
           this.currentPolyline = L.polyline(coordinates, {
-            color: '#' + color,
+            color: `#${color}`,
             weight: 5,
             opacity: 0.8,
             lineCap: 'round',
@@ -735,10 +761,19 @@
           this.map.fitBounds(this.currentPolyline.getBounds(), { padding: [50, 50] });
         },
 
+        getStopZoneLetter(stop) {
+          const zoneId = String(stop?.zone_id || stop?.zoneId || '').trim().toUpperCase();
+          return zoneId === 'A' || zoneId === 'B' || zoneId === 'C' || zoneId === 'D' ? zoneId : 'A';
+        },
+
+        getStopZoneColorVar(stop) {
+          const zoneLetter = this.getStopZoneLetter(stop);
+          return `var(--line-zone-${zoneLetter})`;
+        },
+
         drawStops(routeData, directionData) {
           this.currentMarkers = [];
           this.currentLabels = [];
-          const color = '#' + routeData.color;
           const totalStops = directionData.stops.length;
 
           directionData.stops.forEach((stop, index) => {
@@ -747,17 +782,24 @@
             const stopNameClean = (stop.stop_name || stop.name || '').replace(/"/g, '').trim();
             const isFirstStop = index === 0;
             const isLastStop = index === totalStops - 1;
+            const zoneLetter = this.getStopZoneLetter(stop);
+            const zoneColorVar = this.getStopZoneColorVar(stop);
 
-            const marker = L.circleMarker([stopLat, stopLng], {
-              radius: 6, fillColor: color, color: 'white',
-              weight: 2, opacity: 1, fillOpacity: 1,
+            const marker = L.marker([stopLat, stopLng], {
+              icon: L.divIcon({
+                html: `<div class="stop-zone-marker" style="--zone-color: ${zoneColorVar};">${zoneLetter}</div>`,
+                className: '',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9],
+                tooltipAnchor: [-1, -1]
+              }),
               interactive: true
             }).addTo(this.map);
 
             const stopNumber = index + 1;
             const content = `${stopNumber}. ${stopNameClean}`;
 
-            const tooltip = this.createStopLabelTooltip('right', this.LABEL_OFFSETS['right'].offset, content, stop);
+            const tooltip = this.createStopLabelTooltip('right', this.LABEL_OFFSETS.right.offset, content, stop);
             marker.bindTooltip(tooltip);
 
             // Store marker reference and audio data for click handling
@@ -900,13 +942,19 @@
         // Settings handlers
         setStopLabelFontSize(size) {
           document.documentElement.style.setProperty('--stop-label-font-size', size);
+
+          if (this.map && this.currentLabels.length > 0) {
+            window.requestAnimationFrame(() => {
+              this.optimizeLabelDirections();
+            });
+          }
         },
 
         onFontSizeChange() {
           const size = Math.max(6, Math.min(20, this.fontSize || 11));
           this.fontSize = size;
-          this.setStopLabelFontSize(size + 'px');
-          localStorage.setItem('stopLabelFontSize', size + 'px');
+          this.setStopLabelFontSize(`${size}px`);
+          localStorage.setItem('stopLabelFontSize', `${size}px`);
         },
 
         onPrintPositionChange() {
@@ -925,7 +973,7 @@
             // Next direction for current route
             this.selectedDirectionIdx = nextIdx;
             this.onDirectionChange();
-            localStorage.setItem('lastDirection_' + this.selectedRouteId, this.selectedDirectionIdx);
+            localStorage.setItem(`lastDirection_${this.selectedRouteId}`, this.selectedDirectionIdx);
           } else {
             // Go to next route, first direction
             const routeIndex = this.routes.findIndex(r => r.route_id === this.selectedRouteId);
@@ -950,7 +998,7 @@
             // Previous direction for current route
             this.selectedDirectionIdx = prevIdx;
             this.onDirectionChange();
-            localStorage.setItem('lastDirection_' + this.selectedRouteId, this.selectedDirectionIdx);
+            localStorage.setItem(`lastDirection_${this.selectedRouteId}`, this.selectedDirectionIdx);
           } else {
             // Go to previous route, last direction
             const routeIndex = this.routes.findIndex(r => r.route_id === this.selectedRouteId);
