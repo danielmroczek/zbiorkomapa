@@ -18,6 +18,7 @@
     "process": "node scripts/processor.js",
     "download:audio": "node scripts/downloadAudioMappings.js",
     "check:audio-links": "node scripts/checkAudioLinks.js",
+    "analyze:audio": "node scripts/analyzeAudioDescriptions.js",
     "build": "npm run download && npm run download:audio && npm run process"
   },
   "dependencies": {

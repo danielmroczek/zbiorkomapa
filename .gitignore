@@ -3,3 +3,4 @@ check*
 data
 dist
 node_modules
+.env
