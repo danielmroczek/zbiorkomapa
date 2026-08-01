@@ -12,6 +12,7 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 - wybór linii oraz kierunku jazdy
 - podgląd długości trasy i liczby przystanków
 - odtwarzanie nagrań głosowych dla przystanków
+- **przejazd automatyczny** — animacja pojazdu wzdłuż trasy z ogłoszeniami głosowymi na przystankach (Spacja lub przycisk ▶)
 - gotowy układ do druku i prezentacji
 
 ## Skrypty
