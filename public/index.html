@@ -8,14 +8,17 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;700&family=Inter&family=Roboto&display=swap');
+
     :root {
-    --line-zone-A: #33a864;
-    --line-zone-B: #d70000;
-    --line-zone-C: #e6e600;
-    --line-zone-D: #0B93F6;
+      --line-zone-A: #33a864;
+      --line-zone-B: #d70000;
+      --line-zone-C: #e6e600;
+      --line-zone-D: #0B93F6;
+      --ride-trail-color: #2962FF;
     }
 
     body {
@@ -338,13 +341,22 @@
           <span>Pokaż ramkę na ekranie</span>
         </label>
       </div>
+      <div class="control-group" style="margin-top: 10px;" x-show="currentDirection">
+        <button @click="toggleRide()" :disabled="!currentDirection"
+          style="width: 100%; padding: 8px; font-size: 14px; cursor: pointer; border: 1px solid #ccc; border-radius: 3px; background: #f5f5f5;"
+          :style="isRiding ? 'background: #ffe0e0; border-color: #d70000;' : ''">
+          <span x-text="isRiding ? '⏹ Zatrzymaj przejazd' : '▶ Przejazd'"></span>
+        </button>
+      </div>
       <div class="keyboard-hint">
         <strong>Skróty:</strong><br>
         <span class="kbd">→</span> / <span class="kbd">Shift+</span><span class="kbd">&gt;</span> Następny<br>
         <span class="kbd">←</span> / <span class="kbd">Shift+</span><span class="kbd">&lt;</span> Poprzedni<br><br>
         <strong>Audio:</strong><br>
         <span class="kbd">Klik</span> na przystanek lub etykietę<br>
-        <span class="kbd">Prawy klik</span> na etykietę - obróć
+        <span class="kbd">Prawy klik</span> na etykietę - obróć<br><br>
+        <strong>Przejazd:</strong><br>
+        <span class="kbd">Spacja</span> Start / Stop
       </div>
     </div>
   </div>
@@ -391,6 +403,16 @@
         // Font size
         fontSize: 11,
 
+        // Ride (auto-play) state
+        isRiding: false,
+        ride: {
+          token: 0,           // cancellation token — increment to cancel
+          vehicleMarker: null,
+          trailLine: null,
+          animFrameId: null,
+          RIDE_SEGMENT_MS: 3000, // constant time per segment (configurable)
+        },
+
         // Map internals (not reactive)
         map: null,
         currentPolyline: null,
@@ -419,7 +441,7 @@
 
         playStopAudio(stop, isLastStop = false, isFirstStop = false) {
           if (this.audioPlayer) {
-            this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop, stop);
+            return this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop, stop);
           }
         },
 
@@ -456,8 +478,11 @@
             audioCache: new Map(),
             currentAudio: null,
             isLoading: false,
+            playbackToken: 0,
 
             async play(url, isLastStop = false, isFirstStop = false, stop = null) {
+              const playToken = ++this.playbackToken;
+
               // Stop any currently playing audio
               if (this.currentAudio) {
                 this.currentAudio.pause();
@@ -467,6 +492,7 @@
               // Wait if already loading
               if (this.isLoading) {
                 await new Promise(resolve => setTimeout(resolve, 100));
+                if (playToken !== this.playbackToken) return;
                 return this.play(url, isLastStop, isFirstStop, stop);
               }
 
@@ -493,17 +519,36 @@
                 };
 
                 const playAudio = async (audioUrl) => {
+                  if (playToken !== this.playbackToken) return;
+
                   const audio = getOrCreateAudio(audioUrl);
                   this.currentAudio = audio;
                   audio.currentTime = 0;
-                  await audio.play();
+
+                  try {
+                    await audio.play();
+                  } catch (error) {
+                    if (error?.name === 'AbortError' && playToken !== this.playbackToken) {
+                      return;
+                    }
+                    throw error;
+                  }
+
+                  if (playToken !== this.playbackToken) return;
 
                   return new Promise((resolve) => {
-                    audio.addEventListener('ended', () => {
+                    const cleanup = () => {
                       if (this.currentAudio === audio) {
                         this.currentAudio = null;
                       }
                       resolve();
+                    };
+
+                    audio.addEventListener('ended', cleanup, { once: true });
+                    audio.addEventListener('pause', () => {
+                      if (playToken === this.playbackToken) {
+                        this.currentAudio = null;
+                      }
                     }, { once: true });
                   });
                 };
@@ -525,11 +570,14 @@
                 }
 
                 for (const audioUrl of audioQueue) {
+                  if (playToken !== this.playbackToken) break;
                   await playAudio(audioUrl);
                 }
               } catch (error) {
-                this.isLoading = false;
-                console.error('Audio play error:', error);
+                if (error?.name !== 'AbortError') {
+                  this.isLoading = false;
+                  console.error('Audio play error:', error);
+                }
               }
             }
           };
@@ -551,39 +599,6 @@
             if (this.currentLabels.length > 0) this.optimizeLabelDirections();
           });
 
-          const mapContainer = this.map.getContainer();
-
-          mapContainer.addEventListener('click', (event) => {
-            const labelEl = event.target.closest?.('.stop-label');
-            if (!labelEl) return;
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            const tooltip = labelEl._tooltip;
-            if (!tooltip?.options?.marker) return;
-
-            const stop = tooltip.options.stopData;
-            const isLastStop = tooltip.options.isLastStop;
-            const isFirstStop = tooltip.options.isFirstStop;
-            if (stop) {
-              this.playStopAudio(stop, isLastStop, isFirstStop);
-            }
-          });
-
-          mapContainer.addEventListener('contextmenu', (event) => {
-            const labelEl = event.target.closest?.('.stop-label');
-            if (!labelEl) return;
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            const tooltip = labelEl._tooltip;
-            if (tooltip?.options?.marker) {
-              this.flipTooltip(tooltip.options.marker);
-            }
-          });
-
           // Keyboard shortcuts for navigation
           document.addEventListener('keydown', (e) => {
             // Ignore if typing in input field
@@ -595,6 +610,9 @@
             } else if (e.key === 'ArrowLeft' || (e.key === '<' && e.shiftKey)) {
               e.preventDefault();
               this.prevDirectionOrRoute();
+            } else if (e.key === ' ') {
+              e.preventDefault();
+              this.toggleRide();
             }
           });
         },
@@ -626,6 +644,8 @@
         },
 
         async onRouteChange() {
+          if (this.isRiding) this.stopRide();
+
           if (!this.selectedRouteId) {
             this.currentRoute = null;
             this.directions = [];
@@ -687,6 +707,8 @@
         },
 
         async onDirectionChange() {
+          if (this.isRiding) this.stopRide();
+
           if (!this.currentRoute || this.selectedDirectionIdx == null) return;
 
           this.cleanUpMap();
@@ -739,6 +761,8 @@
 
         // Map operations
         cleanUpMap() {
+          if (this.isRiding) this.stopRide();
+
           if (this.currentPolyline) {
             this.map.removeLayer(this.currentPolyline);
             this.currentPolyline = null;
@@ -802,6 +826,13 @@
             const tooltip = this.createStopLabelTooltip('right', this.LABEL_OFFSETS.right.offset, content, stop);
             marker.bindTooltip(tooltip);
 
+            marker.on('tooltipopen', (e) => {
+              tooltip.addEventListener('click', (event) => {
+                console.log('tooltip clicked');
+                L.DomEvent.stopPropagation(event); // optional
+              });
+            });
+
             // Store marker reference and audio data for click handling
             tooltip.options.marker = marker;
             tooltip.options.isLastStop = isLastStop;
@@ -843,7 +874,7 @@
 
           return L.tooltip({
             permanent: true, direction: direction, offset: offset,
-            className: classes.join(' '), opacity: 1
+            className: classes.join(' '), opacity: 1, interactive: true
           }).setContent(content);
         },
 
@@ -1014,6 +1045,227 @@
               this.onDirectionChange();
             });
           }
+        },
+
+        // ── Ride (auto-play) ──────────────────────────────────────────
+
+        toggleRide() {
+          if (this.isRiding) {
+            this.stopRide();
+          } else {
+            this.startRide();
+          }
+        },
+
+        startRide() {
+          if (!this.currentDirection || this.isRiding) return;
+          this.stopRide(); // cleanup any stale state
+          this.isRiding = true;
+
+          const token = ++this.ride.token;
+          const stops = this.currentDirection.stops;
+          const shapeCoords = this.currentDirection.shape.coordinates;
+
+          // Convert shape to GeoJSON LineString for turf (swap to [lng, lat])
+          const turfLine = turf.lineString(shapeCoords.map(c => [c[1], c[0]]));
+
+          // ponytail: nearestPointOnLine snaps to the closest point on the ENTIRE line.
+          // For loop routes where the shape doubles back near a stop, this may snap to
+          // the wrong occurrence. A future fix could use lineSlice along + accumulated distance
+          // to find the "next" occurrence after the previous stop, not the globally nearest.
+
+          // Build segment slices: for each pair of consecutive stops, slice the shape
+          const segments = [];
+          for (let i = 0; i < stops.length - 1; i++) {
+            // Slice from stop i to stop i+1 along the shape
+            const startPt = turf.point([stops[i].stop_lon, stops[i].stop_lat]);
+            const endPt = turf.point([stops[i + 1].stop_lon, stops[i + 1].stop_lat]);
+            const startNearest = turf.nearestPointOnLine(turfLine, startPt);
+            const endNearest = turf.nearestPointOnLine(turfLine, endPt);
+
+            // Build sub-line from shape coordinates between the two stops
+            const segCoords = [];
+            // Include the start point (snapped to line)
+            segCoords.push([startNearest.geometry.coordinates[1], startNearest.geometry.coordinates[0]]);
+            // Include all shape points between the two stops
+            for (let j = startNearest.properties.index + 1; j <= endNearest.properties.index; j++) {
+              segCoords.push([shapeCoords[j][0], shapeCoords[j][1]]);
+            }
+            // Include the end point (snapped to line)
+            segCoords.push([endNearest.geometry.coordinates[1], endNearest.geometry.coordinates[0]]);
+
+            segments.push(segCoords);
+          }
+
+          // Create vehicle marker (emoji, easy to swap to circle)
+          const routeType = this.currentRoute?.type;
+          const vehicleEmoji = routeType === 'TRAM' ? '🚋' : '🚌';
+          const vehicleMarker = L.marker([stops[0].stop_lat, stops[0].stop_lon], {
+            icon: this._createVehicleIcon(vehicleEmoji),
+            zIndexOffset: 1000
+          }).addTo(this.map);
+          this.ride.vehicleMarker = vehicleMarker;
+
+          // Create trail polyline (empty initially)
+          // ponytail: Leaflet doesn't resolve CSS vars for polyline color, so read the computed value
+          const trailColor = getComputedStyle(document.documentElement).getPropertyValue('--ride-trail-color').trim() || '#2962FF';
+          const trailLine = L.polyline([], {
+            color: trailColor,
+            weight: 5,
+            opacity: 0.9,
+            lineCap: 'round',
+            lineJoin: 'round'
+          }).addTo(this.map);
+          this.ride.trailLine = trailLine;
+
+          // Pan to first stop
+          this.map.panTo([stops[0].stop_lat, stops[0].stop_lon], { animate: true });
+
+          // Start the ride sequence
+          this._rideToStop(token, stops, segments, 0);
+        },
+
+        // ponytail: vehicle icon as a function so it's easy to swap emoji → circle
+        _createVehicleIcon(emoji) {
+          return L.divIcon({
+            html: `<div style="font-size: 24px; line-height: 1; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));">${emoji}</div>`,
+            className: '',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+          });
+        },
+
+        async _rideToStop(token, stops, segments, stopIndex) {
+          // Cancelled?
+          if (token !== this.ride.token) return;
+
+          const isFirstStop = stopIndex === 0;
+          const isLastStop = stopIndex === stops.length - 1;
+
+          // Play audio at current stop
+          await this.playStopAudio(stops[stopIndex], isLastStop, isFirstStop);
+
+          // Cancelled during audio?
+          if (token !== this.ride.token) return;
+
+          // If this was the last stop, finish the ride
+          if (isLastStop) {
+            this._finishRide();
+            return;
+          }
+
+          // Animate to next stop
+          const segment = segments[stopIndex];
+          await this._animateSegment(token, segment);
+
+          // Cancelled during animation?
+          if (token !== this.ride.token) return;
+
+          // Recurse to next stop
+          this._rideToStop(token, stops, segments, stopIndex + 1);
+        },
+
+        _animateSegment(token, segmentCoords) {
+          return new Promise((resolve) => {
+            if (token !== this.ride.token) { resolve(); return; }
+
+            const duration = this.ride.RIDE_SEGMENT_MS;
+            const startTime = performance.now();
+
+            // Pre-compute cumulative distances along the segment for interpolation
+            const distances = [0];
+            for (let i = 1; i < segmentCoords.length; i++) {
+              const d = L.latLng(segmentCoords[i - 1]).distanceTo(L.latLng(segmentCoords[i]));
+              distances.push(distances[i - 1] + d);
+            }
+            const totalDist = distances[distances.length - 1];
+
+            // Edge case: zero-length segment (stops at same position)
+            if (totalDist === 0) { resolve(); return; }
+
+            const animate = (now) => {
+              if (token !== this.ride.token) { resolve(); return; }
+
+              const elapsed = now - startTime;
+              const t = Math.min(elapsed / duration, 1);
+
+              // Find position along segment at fraction t
+              const targetDist = t * totalDist;
+              let pos = segmentCoords[0]; // default to start
+
+              for (let i = 1; i < segmentCoords.length; i++) {
+                if (distances[i] >= targetDist) {
+                  const segFrac = (targetDist - distances[i - 1]) / (distances[i] - distances[i - 1]);
+                  const lat = segmentCoords[i - 1][0] + segFrac * (segmentCoords[i][0] - segmentCoords[i - 1][0]);
+                  const lng = segmentCoords[i - 1][1] + segFrac * (segmentCoords[i][1] - segmentCoords[i - 1][1]);
+                  pos = [lat, lng];
+                  break;
+                }
+              }
+
+              // Move vehicle
+              this.ride.vehicleMarker.setLatLng(pos);
+
+              // Update trail: all segment points up to current position, plus current position
+              const trailPoints = [];
+              for (let i = 0; i < segmentCoords.length; i++) {
+                if (distances[i] <= targetDist) {
+                  trailPoints.push(segmentCoords[i]);
+                } else {
+                  break;
+                }
+              }
+              trailPoints.push(pos);
+
+              // Merge with existing trail
+              const existingTrail = this.ride.trailLine.getLatLngs();
+              // Remove the last point of existing trail (it was the interpolated endpoint, now replaced)
+              const merged = existingTrail.slice(0, -1).concat(trailPoints.map(p => L.latLng(p)));
+              this.ride.trailLine.setLatLngs(merged);
+
+              // Pan map to keep vehicle centered
+              this.map.panTo(pos, { animate: false, duration: 0 });
+
+              if (t < 1) {
+                this.ride.animFrameId = requestAnimationFrame(animate);
+              } else {
+                this.ride.animFrameId = null;
+                resolve();
+              }
+            };
+
+            this.ride.animFrameId = requestAnimationFrame(animate);
+          });
+        },
+
+        _finishRide() {
+          // ponytail: end behavior = cleanup + fitBounds; change here for other behaviors
+          this._cleanupRide();
+          // Restore view to full route
+          if (this.currentPolyline) {
+            this.map.fitBounds(this.currentPolyline.getBounds(), { padding: [50, 50] });
+          }
+        },
+
+        stopRide() {
+          this.ride.token++; // invalidate any running animation
+          this._cleanupRide();
+        },
+
+        _cleanupRide() {
+          if (this.ride.animFrameId) {
+            cancelAnimationFrame(this.ride.animFrameId);
+            this.ride.animFrameId = null;
+          }
+          if (this.ride.vehicleMarker) {
+            this.map.removeLayer(this.ride.vehicleMarker);
+            this.ride.vehicleMarker = null;
+          }
+          if (this.ride.trailLine) {
+            this.map.removeLayer(this.ride.trailLine);
+            this.ride.trailLine = null;
+          }
+          this.isRiding = false;
         }
       };
     }
