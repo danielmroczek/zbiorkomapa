@@ -1118,8 +1118,18 @@
           }).addTo(this.map);
           this.ride.trailLine = trailLine;
 
-          // Pan to first stop
-          this.map.panTo([stops[0].stop_lat, stops[0].stop_lon], { animate: true });
+          // Zoom to show ~2 average stop distances around the first stop
+          // Average distance = route length / (number of stops - 1)
+          const avgStopDist = stops.length > 1 ? lineLen / (stops.length - 1) : lineLen;
+          const viewRadiusKm = avgStopDist * 2;
+          // ponytail: zoom level derived from view radius; Leaflet's scale at zoom z is
+          // ~256 * 2^z pixels per 360° at equator. We approximate: metersPerPixel ≈ 40075016 / (256 * 2^z).
+          // Solve for z given viewRadiusKm * 1000 / mapHeightPx ≈ metersPerPixel.
+          const mapHeightPx = this.map.getSize().y;
+          const metersPerPixel = (viewRadiusKm * 1000) / (mapHeightPx / 2);
+          const targetZoom = Math.log2(40075016 / (256 * metersPerPixel));
+          const clampedZoom = Math.min(Math.max(targetZoom, this.map.getMinZoom()), this.map.getMaxZoom());
+          this.map.setView([stops[0].stop_lat, stops[0].stop_lon], clampedZoom, { animate: true });
 
           // Start the ride sequence
           this._rideToStop(token, stops, 0).catch(e => console.error('Ride error:', e));
