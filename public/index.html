@@ -1062,40 +1062,40 @@
           this.stopRide(); // cleanup any stale state
           this.isRiding = true;
 
+          try {
           const token = ++this.ride.token;
           const stops = this.currentDirection.stops;
           const shapeCoords = this.currentDirection.shape.coordinates;
 
           // Convert shape to GeoJSON LineString for turf (swap to [lng, lat])
           const turfLine = turf.lineString(shapeCoords.map(c => [c[1], c[0]]));
+          const lineLen = turf.length(turfLine, { units: 'kilometers' });
 
-          // ponytail: nearestPointOnLine snaps to the closest point on the ENTIRE line.
-          // For loop routes where the shape doubles back near a stop, this may snap to
-          // the wrong occurrence. A future fix could use lineSlice along + accumulated distance
-          // to find the "next" occurrence after the previous stop, not the globally nearest.
+          // Find each stop's cumulative distance along the shape line (in km)
+          // Walk forward along the line so loop routes don't snap backwards
+          const stopDists = [];
+          let searchStartDist = 0;
+          for (let i = 0; i < stops.length; i++) {
+            const pt = turf.point([stops[i].stop_lon, stops[i].stop_lat]);
+            const nearest = turf.nearestPointOnLine(turfLine, pt);
+            let dist = nearest.properties.location; // already in km
 
-          // Build segment slices: for each pair of consecutive stops, slice the shape
-          const segments = [];
-          for (let i = 0; i < stops.length - 1; i++) {
-            // Slice from stop i to stop i+1 along the shape
-            const startPt = turf.point([stops[i].stop_lon, stops[i].stop_lat]);
-            const endPt = turf.point([stops[i + 1].stop_lon, stops[i + 1].stop_lat]);
-            const startNearest = turf.nearestPointOnLine(turfLine, startPt);
-            const endNearest = turf.nearestPointOnLine(turfLine, endPt);
-
-            // Build sub-line from shape coordinates between the two stops
-            const segCoords = [];
-            // Include the start point (snapped to line)
-            segCoords.push([startNearest.geometry.coordinates[1], startNearest.geometry.coordinates[0]]);
-            // Include all shape points between the two stops
-            for (let j = startNearest.properties.index + 1; j <= endNearest.properties.index; j++) {
-              segCoords.push([shapeCoords[j][0], shapeCoords[j][1]]);
+            // For loop routes: ensure each stop is at or after the previous one
+            if (dist < searchStartDist && i > 0) {
+              // The stop snapped to an earlier part of the line — search forward
+              // by slicing the line from the previous stop onward
+              const remainingLine = turf.lineSliceAlong(turfLine, searchStartDist, lineLen);
+              const nearestFwd = turf.nearestPointOnLine(remainingLine, pt);
+              dist = searchStartDist + nearestFwd.properties.location;
             }
-            // Include the end point (snapped to line)
-            segCoords.push([endNearest.geometry.coordinates[1], endNearest.geometry.coordinates[0]]);
-
-            segments.push(segCoords);
+            searchStartDist = dist;
+            stopDists.push(dist);
           }
+
+          // Store ride context for animation
+          this.ride.turfLine = turfLine;
+          this.ride.lineLen = lineLen;
+          this.ride.stopDists = stopDists;
 
           // Create vehicle marker (emoji, easy to swap to circle)
           const routeType = this.currentRoute?.type;
@@ -1122,7 +1122,12 @@
           this.map.panTo([stops[0].stop_lat, stops[0].stop_lon], { animate: true });
 
           // Start the ride sequence
-          this._rideToStop(token, stops, segments, 0);
+          this._rideToStop(token, stops, 0).catch(e => console.error('Ride error:', e));
+
+          } catch (error) {
+            console.error('startRide error:', error);
+            this._cleanupRide();
+          }
         },
 
         // ponytail: vehicle icon as a function so it's easy to swap emoji → circle
@@ -1135,7 +1140,7 @@
           });
         },
 
-        async _rideToStop(token, stops, segments, stopIndex) {
+        async _rideToStop(token, stops, stopIndex) {
           // Cancelled?
           if (token !== this.ride.token) return;
 
@@ -1155,33 +1160,30 @@
           }
 
           // Animate to next stop
-          const segment = segments[stopIndex];
-          await this._animateSegment(token, segment);
+          await this._animateSegment(token, stopIndex);
 
           // Cancelled during animation?
           if (token !== this.ride.token) return;
 
           // Recurse to next stop
-          this._rideToStop(token, stops, segments, stopIndex + 1);
+          this._rideToStop(token, stops, stopIndex + 1);
         },
 
-        _animateSegment(token, segmentCoords) {
+        _animateSegment(token, stopIndex) {
           return new Promise((resolve) => {
             if (token !== this.ride.token) { resolve(); return; }
 
-            const duration = this.ride.RIDE_SEGMENT_MS;
-            const startTime = performance.now();
-
-            // Pre-compute cumulative distances along the segment for interpolation
-            const distances = [0];
-            for (let i = 1; i < segmentCoords.length; i++) {
-              const d = L.latLng(segmentCoords[i - 1]).distanceTo(L.latLng(segmentCoords[i]));
-              distances.push(distances[i - 1] + d);
-            }
-            const totalDist = distances[distances.length - 1];
+            const turfLine = this.ride.turfLine;
+            const stopDists = this.ride.stopDists;
+            const startDist = stopDists[stopIndex];
+            const endDist = stopDists[stopIndex + 1];
+            const segLen = endDist - startDist;
 
             // Edge case: zero-length segment (stops at same position)
-            if (totalDist === 0) { resolve(); return; }
+            if (segLen <= 0) { resolve(); return; }
+
+            const duration = this.ride.RIDE_SEGMENT_MS;
+            const startTime = performance.now();
 
             const animate = (now) => {
               if (token !== this.ride.token) { resolve(); return; }
@@ -1189,39 +1191,20 @@
               const elapsed = now - startTime;
               const t = Math.min(elapsed / duration, 1);
 
-              // Find position along segment at fraction t
-              const targetDist = t * totalDist;
-              let pos = segmentCoords[0]; // default to start
+              // Current distance along the full shape line
+              const currentDist = startDist + t * segLen;
 
-              for (let i = 1; i < segmentCoords.length; i++) {
-                if (distances[i] >= targetDist) {
-                  const segFrac = (targetDist - distances[i - 1]) / (distances[i] - distances[i - 1]);
-                  const lat = segmentCoords[i - 1][0] + segFrac * (segmentCoords[i][0] - segmentCoords[i - 1][0]);
-                  const lng = segmentCoords[i - 1][1] + segFrac * (segmentCoords[i][1] - segmentCoords[i - 1][1]);
-                  pos = [lat, lng];
-                  break;
-                }
-              }
+              // Slice the trail from start of route to current position
+              // Clamp: lineSliceAlong requires start < stop
+              const sliceEnd = Math.max(currentDist, startDist + 0.0001);
+              const trailSlice = turf.lineSliceAlong(turfLine, 0, sliceEnd);
+              const trailLatLngs = trailSlice.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
+              this.ride.trailLine.setLatLngs(trailLatLngs);
 
-              // Move vehicle
+              // Move vehicle to the endpoint of the trail
+              const lastCoord = trailSlice.geometry.coordinates[trailSlice.geometry.coordinates.length - 1];
+              const pos = [lastCoord[1], lastCoord[0]]; // [lat, lng]
               this.ride.vehicleMarker.setLatLng(pos);
-
-              // Update trail: all segment points up to current position, plus current position
-              const trailPoints = [];
-              for (let i = 0; i < segmentCoords.length; i++) {
-                if (distances[i] <= targetDist) {
-                  trailPoints.push(segmentCoords[i]);
-                } else {
-                  break;
-                }
-              }
-              trailPoints.push(pos);
-
-              // Merge with existing trail
-              const existingTrail = this.ride.trailLine.getLatLngs();
-              // Remove the last point of existing trail (it was the interpolated endpoint, now replaced)
-              const merged = existingTrail.slice(0, -1).concat(trailPoints.map(p => L.latLng(p)));
-              this.ride.trailLine.setLatLngs(merged);
 
               // Pan map to keep vehicle centered
               this.map.panTo(pos, { animate: false, duration: 0 });
@@ -1265,6 +1248,8 @@
             this.map.removeLayer(this.ride.trailLine);
             this.ride.trailLine = null;
           }
+          this.ride.turfLine = null;
+          this.ride.stopDists = null;
           this.isRiding = false;
         }
       };
