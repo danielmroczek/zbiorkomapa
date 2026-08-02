@@ -421,6 +421,7 @@
           currentStopIndex: 0,
           currentT: 0,        // last known animation progress (0-1)
           animResolve: null,  // resolve function for the current animation promise
+          currentSector: 'left', // last known vehicle direction sector
         },
 
         // Map internals (not reactive)
@@ -1199,13 +1200,52 @@
         },
 
         // ponytail: vehicle icon as a function so it's easy to swap emoji → circle
-        _createVehicleIcon(emoji) {
+        _createVehicleIcon(emoji, transform = '') {
           return L.divIcon({
-            html: `<div style="font-size: 24px; line-height: 1; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));">${emoji}</div>`,
+            html: `<div style="font-size: 24px; line-height: 1; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));${transform ? ' transform:' + transform + ';' : ''}">${emoji}</div>`,
             className: '',
             iconSize: [28, 28],
             iconAnchor: [14, 14]
           });
+        },
+
+        // Bearing → sector: 'left' (default), 'right' (flipped), 'oncoming' (toward viewer)
+        _getVehicleSector(bearing) {
+          // Normalize to [-180, 180)
+          const b = ((bearing % 360) + 540) % 360 - 180;
+          // South ±45° → oncoming
+          if (b >= 135 || b < -135) return 'oncoming';
+          // East half → right (flipped)
+          if (b >= 0) return 'right';
+          // West half → left (default)
+          return 'left';
+        },
+
+        _updateVehicleIcon(sector) {
+          const marker = this.ride.vehicleMarker;
+          if (!marker || !marker._icon) return;
+
+          const routeType = this.currentRoute?.type;
+          const isTram = routeType === 'TRAM';
+
+          let emoji, transform;
+          if (sector === 'oncoming') {
+            emoji = isTram ? '🚊' : '🚍';
+            transform = '';
+          } else if (sector === 'right') {
+            emoji = isTram ? '🚋' : '🚌';
+            transform = 'scaleX(-1)';
+          } else {
+            emoji = isTram ? '🚋' : '🚌';
+            transform = '';
+          }
+
+          const innerDiv = marker._icon.querySelector('div');
+          if (innerDiv) {
+            innerDiv.textContent = emoji;
+            innerDiv.style.transform = transform;
+          }
+          this.ride.currentSector = sector;
         },
 
         async _rideToStop(token, stops, stopIndex, resumeT = 0) {
@@ -1295,6 +1335,20 @@
               const pos = [lastCoord[1], lastCoord[0]]; // [lat, lng]
               this.ride.vehicleMarker.setLatLng(pos);
 
+              // Update vehicle icon direction based on bearing from previous shape vertex
+              const nearest = turf.nearestPointOnLine(turfLine, turf.point(lastCoord));
+              let prevIdx = nearest.properties.index;
+              // If we're right on a vertex, use the segment before it
+              if (prevIdx > 0 && nearest.properties.location < 0.002) {
+                prevIdx--;
+              }
+              const prevVertex = turfLine.geometry.coordinates[Math.max(0, prevIdx)];
+              const bearing = turf.bearing(turf.point(prevVertex), turf.point(lastCoord));
+              const sector = this._getVehicleSector(bearing);
+              if (sector !== this.ride.currentSector) {
+                this._updateVehicleIcon(sector);
+              }
+
               // Pan map to keep vehicle centered
               this.map.panTo(pos, { animate: false, duration: 0 });
 
@@ -1346,6 +1400,7 @@
           this.ride.currentStopIndex = 0;
           this.ride.currentT = 0;
           this.ride.animResolve = null;
+          this.ride.currentSector = 'left';
         }
       };
     }
