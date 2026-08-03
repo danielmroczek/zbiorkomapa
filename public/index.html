@@ -19,6 +19,7 @@
       --line-zone-C: #e6e600;
       --line-zone-D: #0B93F6;
       --ride-trail-color: #2962FF;
+      --ride-stop-highlight-color: #2962FF;
     }
 
     body {
@@ -157,6 +158,11 @@
       user-select: none;
       pointer-events: none;
       transform: translateY(-1px);
+    }
+
+    .stop-label.ride-active-stop {
+      border-width: 2px;
+      border-color: var(--ride-stop-highlight-color) !important;
     }
 
     .stop-label.on-demand-stop-label {
@@ -422,6 +428,7 @@
           currentT: 0,        // last known animation progress (0-1)
           animResolve: null,  // resolve function for the current animation promise
           currentSector: 'left', // last known vehicle direction sector
+          highlightedStopIndex: null, // stop label currently highlighted during ride
         },
 
         // Map internals (not reactive)
@@ -1256,6 +1263,9 @@
           const isFirstStop = stopIndex === 0;
           const isLastStop = stopIndex === stops.length - 1;
 
+          // Highlight current stop label during ride
+          this._highlightStopLabel(stopIndex);
+
           // Play audio at current stop (skip if resuming mid-segment with t > 0)
           if (resumeT === 0) {
             await this.playStopAudio(stops[stopIndex], isLastStop, isFirstStop);
@@ -1267,6 +1277,9 @@
             this.ride.pauseState = { stopIndex, t: 0 };
             return;
           }
+
+          // Unhighlight before moving on
+          this._unhighlightStopLabel();
 
           // If this was the last stop, finish the ride
           if (isLastStop) {
@@ -1401,6 +1414,32 @@
           this.ride.currentT = 0;
           this.ride.animResolve = null;
           this.ride.currentSector = 'left';
+          this._unhighlightStopLabel();
+        },
+
+        _highlightStopLabel(stopIndex) {
+          this._unhighlightStopLabel(); // clear any previous
+          const labelData = this.currentLabels[stopIndex];
+          if (!labelData?.marker) return;
+          const tooltipEl = labelData.marker.getTooltip();
+          if (tooltipEl?.getElement) {
+            const el = tooltipEl.getElement();
+            if (el) el.classList.add('ride-active-stop');
+          }
+          this.ride.highlightedStopIndex = stopIndex;
+        },
+
+        _unhighlightStopLabel() {
+          if (this.ride.highlightedStopIndex == null) return;
+          const labelData = this.currentLabels[this.ride.highlightedStopIndex];
+          if (labelData?.marker) {
+            const tooltipEl = labelData.marker.getTooltip();
+            if (tooltipEl?.getElement) {
+              const el = tooltipEl.getElement();
+              if (el) el.classList.remove('ride-active-stop');
+            }
+          }
+          this.ride.highlightedStopIndex = null;
         }
       };
     }
