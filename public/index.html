@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
+  <script src="engine-sound.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;700&family=Inter&family=Roboto&display=swap');
@@ -347,6 +348,14 @@
         </label>
       </div>
       <div class="control-group" style="margin-top: 10px;" x-show="currentDirection">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 6px;">
+          <input type="checkbox" style="width: auto; margin: 0;" x-model="engineSoundEnabled" @change="onEngineSoundChange()">
+          <span style="font-size: 12px;">Dźwięk silnika</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 6px;">
+          <input type="checkbox" style="width: auto; margin: 0;" x-model="readStopNamesEnabled" @change="onReadStopNamesChange()">
+          <span style="font-size: 12px;">Czytaj przystanki</span>
+        </label>
         <div style="display: flex; gap: 6px;">
           <button @click="togglePlayPause()" :disabled="!currentDirection"
             style="flex: 1; padding: 8px; font-size: 14px; cursor: pointer; border: 1px solid #ccc; border-radius: 3px; background: #f5f5f5;"
@@ -422,7 +431,7 @@
           vehicleMarker: null,
           trailLine: null,
           animFrameId: null,
-          RIDE_SEGMENT_MS: 3000, // constant time per segment (configurable)
+          vMax: 0,            // cruise speed in km/s (computed per route)
           pauseState: null,   // { stopIndex, t } — resume point after unpause
           currentStopIndex: 0,
           currentT: 0,        // last known animation progress (0-1)
@@ -439,6 +448,10 @@
 
         // Audio player singleton
         audioPlayer: null,
+        // Engine sound singleton
+        engineSound: null,
+        engineSoundEnabled: true,
+        readStopNamesEnabled: true,
         voiceAnnouncementsBaseUrl: 'https://www.ztm.poznan.pl/pl/dla-deweloperow/getVoiceAnnouncements/?file=',
 
         LABEL_OFFSETS: {
@@ -483,6 +496,7 @@
         async init() {
           this.initMap();
           this.initAudioPlayer();
+          this.engineSound = createEngineSound();
           this.restoreSettings();
           await this.loadRoutesIndex();
           this.restoreLastRoute();
@@ -644,6 +658,8 @@
           const pos = localStorage.getItem('printPosition');
           if (pos) this.printPosition = pos;
           if (localStorage.getItem('printPreview') === 'true') this.printPreview = true;
+          if (localStorage.getItem('engineSoundEnabled') === 'false') this.engineSoundEnabled = false;
+          if (localStorage.getItem('readStopNamesEnabled') === 'false') this.readStopNamesEnabled = false;
         },
 
         async restoreLastRoute() {
@@ -1014,6 +1030,23 @@
           localStorage.setItem('printPreview', this.printPreview ? 'true' : 'false');
         },
 
+        async onEngineSoundChange() {
+          localStorage.setItem('engineSoundEnabled', this.engineSoundEnabled ? 'true' : 'false');
+          if (this.isRiding) {
+            if (this.engineSoundEnabled) {
+              const engineType = this.currentRoute?.type === 'TRAM' ? 'tram' : 'bus';
+              await this.engineSound.start(engineType);
+              this.engineSound.setRPM(0.15);
+            } else {
+              this.engineSound.stop();
+            }
+          }
+        },
+
+        onReadStopNamesChange() {
+          localStorage.setItem('readStopNamesEnabled', this.readStopNamesEnabled ? 'true' : 'false');
+        },
+
         nextDirectionOrRoute() {
           if (!this.currentRoute || this.directions.length === 0) return;
 
@@ -1067,13 +1100,13 @@
 
         // ── Ride (auto-play) ──────────────────────────────────────────
 
-        togglePlayPause() {
+        async togglePlayPause() {
           if (this.isRiding && !this.isPaused) {
             this.pauseRide();
           } else if (this.isRiding && this.isPaused) {
             this.resumeRide();
           } else {
-            this.startRide();
+            await this.startRide();
           }
         },
 
@@ -1105,6 +1138,7 @@
             this.ride.pauseState = { stopIndex: this.ride.currentStopIndex || 0, t: this.ride.currentT || 0 };
           }
           this.ride.currentT = 0;
+          if (this.engineSoundEnabled) this.engineSound.setRPM(0.15); // idle while paused
         },
 
         resumeRide() {
@@ -1121,7 +1155,7 @@
           this._rideToStop(token, stops, pauseState.stopIndex, pauseState.t).catch(e => console.error('Ride error:', e));
         },
 
-        startRide() {
+        async startRide() {
           if (!this.currentDirection || this.isRiding) return;
           this.stopRide(); // cleanup any stale state
           this.isRiding = true;
@@ -1162,6 +1196,11 @@
           this.ride.lineLen = lineLen;
           this.ride.stopDists = stopDists;
 
+          // Compute cruise speed: avg segment distance / 2 → avg segment time ≈ 3s
+          // (1s accel + cruise + 1s decel; cruise time = dist/vMax - 1)
+          const avgSegDist = stops.length > 1 ? lineLen / (stops.length - 1) : lineLen;
+          this.ride.vMax = avgSegDist / 2; // km/s
+
           // Create vehicle marker (emoji, easy to swap to circle)
           const routeType = this.currentRoute?.type;
           const vehicleEmoji = routeType === 'TRAM' ? '🚋' : '🚌';
@@ -1198,6 +1237,14 @@
 
           // Start the ride sequence
           this.ride.currentStopIndex = 0;
+
+          // Start engine sound
+          if (this.engineSoundEnabled) {
+            const engineType = this.currentRoute?.type === 'TRAM' ? 'tram' : 'bus';
+            await this.engineSound.start(engineType);
+            this.engineSound.setRPM(0.15); // idle
+          }
+
           this._rideToStop(token, stops, 0, 0).catch(e => console.error('Ride error:', e));
 
           } catch (error) {
@@ -1266,9 +1313,17 @@
           // Highlight current stop label during ride
           this._highlightStopLabel(stopIndex);
 
+          // Engine idle at stop
+          if (this.engineSoundEnabled) this.engineSound.setRPM(0.15);
+
           // Play audio at current stop (skip if resuming mid-segment with t > 0)
           if (resumeT === 0) {
-            await this.playStopAudio(stops[stopIndex], isLastStop, isFirstStop);
+            if (this.readStopNamesEnabled) {
+              await this.playStopAudio(stops[stopIndex], isLastStop, isFirstStop);
+            } else {
+              // Silent stop: brief pause to show highlight
+              await new Promise(r => setTimeout(r, 1000));
+            }
           }
 
           // Cancelled or paused during audio?
@@ -1307,21 +1362,70 @@
             const stopDists = this.ride.stopDists;
             const startDist = stopDists[stopIndex];
             const endDist = stopDists[stopIndex + 1];
-            const segLen = endDist - startDist;
+            const segLen = endDist - startDist; // km
 
-            // Edge case: zero-length segment (stops at same position)
+            // Edge case: zero-length segment
             if (segLen <= 0) { resolve(); return; }
 
-            const duration = this.ride.RIDE_SEGMENT_MS;
-            // Account for resume: if resuming at t=0.5, we've already spent 50% of the duration
-            const startTime = performance.now() - resumeT * duration;
+            const vMax = this.ride.vMax; // km/s
+
+            // Compute segment duration based on accel/cruise/decel model
+            // Accel = 1s (0→vMax), Decel = 1s (vMax→0)
+            // If segLen >= vMax: full profile, duration = segLen/vMax + 1
+            // If segLen < vMax: overlapping accel+decel, duration = 2·√(segLen/vMax)
+            let duration; // seconds
+            if (segLen >= vMax) {
+              duration = segLen / vMax + 1;
+            } else {
+              duration = 2 * Math.sqrt(segLen / vMax);
+            }
+            const durationMs = duration * 1000;
+
+            // Compute position (0-1 fraction of segLen) and speed fraction (0-1 of vMax) at time t (0-1)
+            const progressAndSpeed = (t) => {
+              const elapsed = t * duration; // seconds
+              let pos, speed;
+              if (segLen >= vMax) {
+                // Full profile: accel(1s) → cruise → decel(1s)
+                const cruiseTime = duration - 2; // seconds
+                if (elapsed < 1) {
+                  // Accel phase
+                  pos = 0.5 * vMax * elapsed * elapsed;
+                  speed = elapsed; // 0→1
+                } else if (elapsed < 1 + cruiseTime) {
+                  // Cruise phase
+                  pos = 0.5 * vMax + vMax * (elapsed - 1);
+                  speed = 1;
+                } else {
+                  // Decel phase
+                  const dt = duration - elapsed;
+                  pos = segLen - 0.5 * vMax * dt * dt;
+                  speed = dt; // 1→0
+                }
+              } else {
+                // Overlapping: accel then decel, peak speed < vMax
+                const t1 = Math.sqrt(segLen / vMax); // accel time
+                const vPeak = vMax * t1;
+                if (elapsed < t1) {
+                  pos = 0.5 * vMax * elapsed * elapsed;
+                  speed = elapsed / t1; // 0→1 (fraction of vPeak)
+                } else {
+                  const dt = 2 * t1 - elapsed;
+                  pos = segLen - 0.5 * vMax * dt * dt;
+                  speed = dt / t1; // 1→0
+                }
+              }
+              return { frac: pos / segLen, speed: Math.max(0, Math.min(1, speed)) };
+            };
+
+            // Account for resume: shift startTime back by resumeT fraction
+            const startTime = performance.now() - resumeT * durationMs;
 
             const animate = (now) => {
               if (token !== this.ride.token) {
-                // Paused or stopped — save pause state if paused
                 if (this.isPaused) {
                   const elapsed = now - startTime;
-                  const t = Math.min(Math.max(elapsed / duration, 0), 1);
+                  const t = Math.min(Math.max(elapsed / durationMs, 0), 1);
                   this.ride.pauseState = { stopIndex, t };
                 }
                 this.ride.animResolve = null;
@@ -1330,14 +1434,18 @@
               }
 
               const elapsed = now - startTime;
-              const t = Math.min(elapsed / duration, 1);
+              const t = Math.min(elapsed / durationMs, 1);
               this.ride.currentT = t;
 
+              const { frac, speed } = progressAndSpeed(t);
+
+              // Update engine RPM: linear with speed
+              if (this.engineSoundEnabled) this.engineSound.setRPM(0.15 + speed * 0.85);
+
               // Current distance along the full shape line
-              const currentDist = startDist + t * segLen;
+              const currentDist = startDist + frac * segLen;
 
               // Slice the trail from start of route to current position
-              // Clamp: lineSliceAlong requires start < stop
               const sliceEnd = Math.max(currentDist, startDist + 0.0001);
               const trailSlice = turf.lineSliceAlong(turfLine, 0, sliceEnd);
               const trailLatLngs = trailSlice.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
@@ -1345,13 +1453,12 @@
 
               // Move vehicle to the endpoint of the trail
               const lastCoord = trailSlice.geometry.coordinates[trailSlice.geometry.coordinates.length - 1];
-              const pos = [lastCoord[1], lastCoord[0]]; // [lat, lng]
+              const pos = [lastCoord[1], lastCoord[0]];
               this.ride.vehicleMarker.setLatLng(pos);
 
-              // Update vehicle icon direction based on bearing from previous shape vertex
+              // Update vehicle icon direction based on bearing
               const nearest = turf.nearestPointOnLine(turfLine, turf.point(lastCoord));
               let prevIdx = nearest.properties.index;
-              // If we're right on a vertex, use the segment before it
               if (prevIdx > 0 && nearest.properties.location < 0.002) {
                 prevIdx--;
               }
@@ -1407,6 +1514,7 @@
           }
           this.ride.turfLine = null;
           this.ride.stopDists = null;
+          this.ride.vMax = 0;
           this.isRiding = false;
           this.isPaused = false;
           this.ride.pauseState = null;
@@ -1415,6 +1523,7 @@
           this.ride.animResolve = null;
           this.ride.currentSector = 'left';
           this._unhighlightStopLabel();
+          if (this.engineSoundEnabled) this.engineSound.stop();
         },
 
         _highlightStopLabel(stopIndex) {
