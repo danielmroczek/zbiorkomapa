@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { routeSegments } from "./osrm-router.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -547,7 +548,7 @@ async function processCity(cityConfig) {
         const shapePoints = shapesByRoute.get(shapeId) || [];
 
         // Get lat/lng array for the route line
-        const latlngs = shapePoints.map((p) => [
+        let latlngs = shapePoints.map((p) => [
           parseFloat(p.shape_pt_lat),
           parseFloat(p.shape_pt_lon),
         ]);
@@ -761,6 +762,30 @@ async function processCity(cityConfig) {
         // Skip directions without stops
         if (routeStops.length === 0) {
           continue;
+        }
+
+        // If no shape from GTFS, route via OSRM using stop coordinates
+        if (latlngs.length === 0 && routeStops.length >= 2) {
+          console.log(
+            `    OSRM routing: ${routeStops[0].stop_name} → ${routeStops[routeStops.length - 1].stop_name} (${routeStops.length} przystanków)...`,
+          );
+          try {
+            const osrmCoords = await routeSegments(routeStops, {
+              onSegment: (i, total) => {
+                if ((i + 1) % 5 === 0 || i + 1 === total) {
+                  console.log(`    OSRM: segment ${i + 1}/${total}`);
+                }
+              },
+            });
+            latlngs = osrmCoords;
+            shapeId = "osrm-generated";
+            console.log(`    OSRM: wygenerowano ${osrmCoords.length} punktów kształtu`);
+          } catch (err) {
+            console.error(`    OSRM error: ${err.message}, używam prostych linii`);
+            // Fallback: straight lines between stops
+            latlngs = routeStops.map((s) => [s.stop_lat, s.stop_lon]);
+            shapeId = "straight-line-fallback";
+          }
         }
 
         // Get direction name by matching destination with direction key
