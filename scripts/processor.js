@@ -767,19 +767,13 @@ async function processCity(cityConfig) {
         // If no shape from GTFS, route via OSRM using stop coordinates
         if (latlngs.length === 0 && routeStops.length >= 2) {
           console.log(
-            `    OSRM routing: ${routeStops[0].stop_name} → ${routeStops[routeStops.length - 1].stop_name} (${routeStops.length} przystanków)...`,
+            `    OSRM: ${routeStops[0].stop_name} → ${routeStops[routeStops.length - 1].stop_name} (${routeStops.length} przystanków)...`,
           );
           try {
-            const osrmCoords = await routeSegments(routeStops, {
-              onSegment: (i, total) => {
-                if ((i + 1) % 5 === 0 || i + 1 === total) {
-                  console.log(`    OSRM: segment ${i + 1}/${total}`);
-                }
-              },
-            });
+            const osrmCoords = await routeSegments(routeStops);
             latlngs = osrmCoords;
             shapeId = "osrm-generated";
-            console.log(`    OSRM: wygenerowano ${osrmCoords.length} punktów kształtu`);
+            console.log(`    OSRM: ${osrmCoords.length} punktów kształtu`);
           } catch (err) {
             console.error(`    OSRM error: ${err.message}, używam prostych linii`);
             // Fallback: straight lines between stops
