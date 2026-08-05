@@ -1,0 +1,17 @@
+{
+  "cities": [
+    {
+      "name": "Poznań",
+      "gtfsUrl": "https://www.ztm.poznan.pl/pl/dla-deweloperow/getGTFSFile",
+      "audioBaseUrl": "https://www.ztm.poznan.pl/pl/dla-deweloperow/getVoiceAnnouncements/?file=",
+      "audioSource": "recordings",
+      "ttsLang": "pl-PL"
+    },
+    {
+      "name": "Świnoujście",
+      "gtfsUrl": "https://mkuran.pl/gtfs/swinoujscie.zip",
+      "audioSource": "tts",
+      "ttsLang": "pl-PL"
+    }
+  ]
+}

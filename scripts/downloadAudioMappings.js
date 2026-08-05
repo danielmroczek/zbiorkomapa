@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 
 const SOURCE_URL = "https://www.ztm.poznan.pl/otwarte-dane/zapowiedzi-glosowe/";
-const OUTPUT_PATH = path.join(projectRoot, "data", "audio.csv");
+const OUTPUT_PATH = path.join(projectRoot, "data", "poznan", "audio.csv");
 
 function decodeHtmlEntities(value) {
   return value
@@ -129,6 +129,11 @@ async function main() {
         .join(","),
     ),
   ];
+
+  const outputDir = path.dirname(OUTPUT_PATH);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
 
   fs.writeFileSync(OUTPUT_PATH, `\uFEFF${csvLines.join("\n")}\n`, "utf8");
 

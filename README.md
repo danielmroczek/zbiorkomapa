@@ -1,6 +1,6 @@
 # Zbiorkomapa
 
-Zbiorkomapa to interaktywna wizualizacja tras komunikacji miejskiej w Poznaniu. Projekt łączy dane GTFS z mapą, umożliwiając przeglądanie linii, wyboru kierunku oraz analizę tras i przystanków.
+Zbiorkomapa to interaktywna wizualizacja tras komunikacji miejskiej. Projekt łączy dane GTFS z mapą, umożliwiając przeglądanie linii, wyboru kierunku oraz analizę tras i przystanków. Obsługuje wiele miast — obecnie Poznań i Świnoujście.
 
 ## Demo
 
@@ -8,21 +8,40 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 
 ## Najważniejsze funkcje
 
+- obsługa wielu miast (Poznań, Świnoujście) z łatwą możliwością dodawania kolejnych
 - przeglądanie tras tramwajowych i autobusowych
 - wybór linii oraz kierunku jazdy
 - podgląd długości trasy i liczby przystanków
-- odtwarzanie nagrań głosowych dla przystanków
+- odtwarzanie nagrań głosowych dla przystanków (miasta z nagraniami) lub TTS (miasta bez nagrań)
 - **przejazd automatyczny** — animacja pojazdu wzdłuż trasy z ogłoszeniami głosowymi na przystankach (Spacja lub przycisk ▶)
 - gotowy układ do druku i prezentacji
 
+## Dodawanie nowego miasta
+
+1. Dodaj wpis do `cities.json` w katalogu głównym projektu:
+   ```json
+   {
+     "name": "Nazwa Miasta",
+     "gtfsUrl": "https://example.com/gtfs.zip",
+     "audioSource": "tts",
+     "ttsLang": "pl-PL"
+   }
+   ```
+2. Uruchom `npm run build` — dane zostaną pobrane i przetworzone automatycznie.
+3. Jeśli miasto ma nagrania głosowe, ustaw `"audioSource": "recordings"` i dodaj `"audioBaseUrl"`.
+
 ## Skrypty
 
-- `npm run download` — pobiera pliki GTFS z ZTM Poznań
-- `npm run download-audio` — pobiera mapowania nagrań głosowych do pliku `data/audio.csv`
+- `npm run download` — pobiera pliki GTFS dla wszystkich miast (lub `--city slug` dla jednego)
+- `npm run download:audio` — pobiera mapowania nagrań głosowych dla Poznania
 - `npm run process` — przetwarza dane i przygotowuje zasoby dla aplikacji
+- `npm run build` — pobiera i przetwarza wszystko (`download` + `download:audio` + `process`)
 
 ## Struktura projektu
 
-- `data/` — pliki GTFS oraz mapowania audio
+- `cities.json` — konfiguracja miast (GTFS URL, audio source, TTS lang)
+- `data/{city-slug}/` — pliki GTFS oraz mapowania audio per miasto
+- `public/dist/{city-slug}/` — wygenerowane dane tras per miasto
+- `public/dist/cities.json` — konfiguracja miast dla frontendu
 - `public/` — frontend oraz zasoby statyczne
 - `scripts/` — skrypty pobierające i przetwarzające dane

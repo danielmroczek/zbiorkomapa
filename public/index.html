@@ -4,13 +4,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trasa autobusu - Poznań</title>
+  <title>Zbiorkomapa — trasy komunikacji miejskiej</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
   <script src="engine-sound.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;700&family=Inter&family=Roboto&display=swap');
 
@@ -266,6 +269,83 @@
       }
     }
 
+    /* City modal */
+    .city-modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .city-modal {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+
+    .city-modal h2 {
+      margin: 0 0 20px 0;
+      text-align: center;
+      color: #333;
+      font-size: 20px;
+    }
+
+    .city-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .city-list li {
+      margin-bottom: 10px;
+    }
+
+    .city-list button {
+      width: 100%;
+      padding: 14px 20px;
+      font-size: 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: left;
+    }
+
+    .city-list button:hover {
+      border-color: #2962FF;
+      background: #f5f7ff;
+    }
+
+    .city-list button.active {
+      border-color: #2962FF;
+      background: #e8eeff;
+      font-weight: 600;
+    }
+
+    .city-selector-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: #666;
+      cursor: pointer;
+      border: none;
+      background: none;
+      padding: 2px 0;
+      margin-bottom: 4px;
+    }
+
+    .city-selector-btn:hover {
+      color: #2962FF;
+    }
+
     @media print {
       .info-panel {
         display: none;
@@ -290,9 +370,29 @@
 
 <body x-data="_busApp()" x-init="init()">
 
+  <!-- City selection modal -->
+  <div class="city-modal-overlay" x-show="showCityModal" x-cloak>
+    <div class="city-modal">
+      <h2>🗺️ Wybierz miasto</h2>
+      <ul class="city-list">
+        <template x-for="city in cities" :key="city.slug">
+          <li>
+            <button :class="{ active: currentCitySlug === city.slug }"
+              @click="selectCity(city.slug)">
+              <span x-text="city.name"></span>
+            </button>
+          </li>
+        </template>
+      </ul>
+    </div>
+  </div>
+
   <div id="map"></div>
 
   <div class="info-panel">
+    <button class="city-selector-btn" @click="showCityModal = true" x-show="currentCityName">
+      📍 <span x-text="currentCityName"></span> ▾
+    </button>
     <h2>
       <span class="route-badge" :class="badgeClass" :style="badgeStyle" x-text="shortName">-</span>
     </h2>
@@ -396,6 +496,13 @@
   <script>
     function _busApp() {
       return {
+        // City data
+        cities: [],
+        currentCitySlug: '',
+        currentCityName: '',
+        currentCityConfig: null,
+        showCityModal: false,
+
         // Route data
         routes: [],
         selectedRouteId: '',
@@ -405,7 +512,7 @@
         currentDirection: null,
 
         // Display state
-        panelTitle: '🚌 Poznań - Wybierz linię',
+        panelTitle: '🚌 Wybierz linię',
         shortName: '-',
         routeTypeEmoji: '🚌',
         badgeClass: '',
@@ -452,7 +559,9 @@
         engineSound: null,
         engineSoundEnabled: true,
         readStopNamesEnabled: true,
-        voiceAnnouncementsBaseUrl: 'https://www.ztm.poznan.pl/pl/dla-deweloperow/getVoiceAnnouncements/?file=',
+
+        // TTS state
+        ttsUtterance: null,
 
         LABEL_OFFSETS: {
           'right': { direction: 'right', offset: [5, 0] },
@@ -462,7 +571,9 @@
         },
 
         getVoiceAnnouncementUrl(fileName) {
-          return `${this.voiceAnnouncementsBaseUrl}${encodeURIComponent(fileName)}`;
+          const baseUrl = this.currentCityConfig?.audioBaseUrl;
+          if (!baseUrl) return '';
+          return `${baseUrl}${encodeURIComponent(fileName)}`;
         },
 
         getStopAudioUrl(stop) {
@@ -470,9 +581,71 @@
           return this.getVoiceAnnouncementUrl(`${audioId}.mp3`);
         },
 
+        // TTS: speak text using browser speechSynthesis
+        ttsSpeak(text) {
+          return new Promise((resolve) => {
+            if (!('speechSynthesis' in window)) { resolve(); return; }
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = this.currentCityConfig?.ttsLang || 'pl-PL';
+            utterance.rate = 0.9;
+            utterance.onend = () => resolve();
+            utterance.onerror = () => resolve();
+            this.ttsUtterance = utterance;
+            speechSynthesis.speak(utterance);
+          });
+        },
+
+        // Play a short beep using WebAudio (for TTS cities)
+        playBeep(frequency = 880, durationMs = 150) {
+          return new Promise((resolve) => {
+            try {
+              const ctx = new (window.AudioContext || window.webkitAudioContext)();
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.frequency.value = frequency;
+              gain.gain.value = 0.3;
+              osc.start();
+              setTimeout(() => {
+                osc.stop();
+                ctx.close();
+                resolve();
+              }, durationMs);
+            } catch (e) {
+              resolve();
+            }
+          });
+        },
+
         playStopAudio(stop, isLastStop = false, isFirstStop = false) {
-          if (this.audioPlayer) {
-            return this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop, stop);
+          const audioSource = this.currentCityConfig?.audioSource || 'tts';
+
+          if (audioSource === 'tts') {
+            return this._playStopAudioTTS(stop, isLastStop, isFirstStop);
+          } else {
+            if (this.audioPlayer) {
+              return this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop, stop);
+            }
+          }
+        },
+
+        async _playStopAudioTTS(stop, isLastStop = false, isFirstStop = false) {
+          const stopName = (stop?.stop_name || '').replace(/"/g, '').trim();
+          const isOnDemand = Boolean(stop?.is_on_demand);
+
+          if (isFirstStop) {
+            await this.playBeep(880, 150);
+          }
+
+          await this.ttsSpeak(stopName);
+
+          if (isOnDemand) {
+            await this.ttsSpeak('Przystanek na żądanie');
+          }
+
+          if (isLastStop) {
+            await this.ttsSpeak('Koniec trasy');
           }
         },
 
@@ -498,8 +671,9 @@
           this.initAudioPlayer();
           this.engineSound = createEngineSound();
           this.restoreSettings();
-          await this.loadRoutesIndex();
-          this.restoreLastRoute();
+          await this.loadCitiesConfig();
+          this.initHashRouting();
+          await this.loadCityData();
         },
 
         initAudioPlayer() {
@@ -621,7 +795,7 @@
             doubleClickZoom: false,
             zoomSnap: 0.1,
             zoomDelta: 0.1
-          }).setView([52.4069, 16.9299], 13);
+          }).setView([52.0, 19.0], 6);
 
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -663,7 +837,7 @@
         },
 
         async restoreLastRoute() {
-          const lastRoute = localStorage.getItem('lastRoute');
+          const lastRoute = localStorage.getItem(`lastRoute_${this.currentCitySlug}`);
           if (lastRoute && this.routes.some(r => r.route_id === lastRoute)) {
             this.selectedRouteId = lastRoute;
             await this.onRouteChange();
@@ -692,7 +866,7 @@
           if (!routeMeta) return;
 
           try {
-            const response = await fetch(`./dist/${this.selectedRouteId}.json`);
+            const response = await fetch(`./dist/${this.currentCitySlug}/${this.selectedRouteId}.json`);
             const routeData = await response.json();
             this.currentRoute = routeData;
             this.directions = routeData.directions;
@@ -727,13 +901,13 @@
               this.badgeStyle['border-color'] = textColor;
             }
 
-            this.panelTitle = `${routeTypeEmoji} ${routeTypeName} nr ${shortName}`;
+            this.panelTitle = `${routeTypeEmoji} ${routeTypeName} nr ${shortName} — ${this.currentCityName}`;
             // Restore last direction
             const savedDir = localStorage.getItem(`lastDirection_${this.selectedRouteId}`);
             const dirIdx = savedDir ? parseInt(savedDir, 10) : 0;
             this.selectedDirectionIdx = (dirIdx >= 0 && dirIdx < this.directions.length) ? dirIdx : 0;
 
-            localStorage.setItem('lastRoute', this.selectedRouteId);
+            localStorage.setItem(`lastRoute_${this.currentCitySlug}`, this.selectedRouteId);
             await this.onDirectionChange();
           } catch (error) {
             console.error(`Błąd ładowania danych dla linii ${this.selectedRouteId}:`, error);
@@ -759,7 +933,7 @@
           const directionName = this.currentDirection.direction_name.replace(/"/g, '').trim();
           const shortName = this.currentRoute.short_name.replace(/"/g, '').trim();
           const routeTypeName = this.currentRoute.type === 'TRAM' ? 'Tramwaju' : 'Autobusu';
-          document.title = `Trasa ${routeTypeName.toLowerCase()} nr ${shortName}: ${directionName}`;
+          document.title = `Trasa ${routeTypeName.toLowerCase()} nr ${shortName}: ${directionName} — ${this.currentCityName}`;
 
           // Print info
           this.printRouteNumber = shortName;
@@ -783,13 +957,96 @@
           this.drawStops(this.currentRoute, this.currentDirection);
         },
 
+        // City management
+        async loadCitiesConfig() {
+          try {
+            const response = await fetch('./dist/cities.json');
+            this.cities = await response.json();
+          } catch (error) {
+            console.error('Błąd ładowania konfiguracji miast:', error);
+            this.cities = [];
+          }
+        },
+
+        initHashRouting() {
+          // Read city from hash on load
+          const hashCity = window.location.hash.slice(1);
+          if (hashCity && this.cities.some(c => c.slug === hashCity)) {
+            this.currentCitySlug = hashCity;
+          } else {
+            // Check localStorage
+            const saved = localStorage.getItem('currentCity');
+            if (saved && this.cities.some(c => c.slug === saved)) {
+              this.currentCitySlug = saved;
+            } else if (this.cities.length > 0) {
+              // No saved city — show modal
+              this.showCityModal = true;
+              return;
+            }
+          }
+
+          // Update hash
+          if (this.currentCitySlug) {
+            window.location.hash = this.currentCitySlug;
+          }
+
+          // Listen for hash changes (back/forward navigation)
+          window.addEventListener('hashchange', () => {
+            const newHash = window.location.hash.slice(1);
+            if (newHash && newHash !== this.currentCitySlug && this.cities.some(c => c.slug === newHash)) {
+              this.currentCitySlug = newHash;
+              this.loadCityData();
+            }
+          });
+        },
+
+        async selectCity(slug) {
+          if (this.isRiding) this.stopRide();
+          this.currentCitySlug = slug;
+          this.showCityModal = false;
+          window.location.hash = slug;
+          localStorage.setItem('currentCity', slug);
+          // Reset route state
+          this.selectedRouteId = '';
+          this.currentRoute = null;
+          this.directions = [];
+          this.currentDirection = null;
+          this.selectedDirectionIdx = 0;
+          this.cleanUpMap();
+          await this.loadCityData();
+        },
+
+        async loadCityData() {
+          if (!this.currentCitySlug) return;
+
+          const cityConfig = this.cities.find(c => c.slug === this.currentCitySlug);
+          if (!cityConfig) return;
+
+          this.currentCityConfig = cityConfig;
+          this.currentCityName = cityConfig.name;
+
+          await this.loadRoutesIndex();
+          await this.restoreLastRoute();
+        },
+
         // Data loading
         async loadRoutesIndex() {
           try {
-            const response = await fetch('./dist/routes.json');
-            this.routes = await response.json();
+            const response = await fetch(`./dist/${this.currentCitySlug}/routes.json`);
+            const data = await response.json();
+            // Support both old format (array) and new format ({routes, map_center})
+            if (Array.isArray(data)) {
+              this.routes = data;
+            } else {
+              this.routes = data.routes || [];
+              // Set map center from computed centroid
+              if (data.map_center) {
+                this.map.setView(data.map_center, 13);
+              }
+            }
           } catch (error) {
             console.error('Błąd ładowania indeksu linii:', error);
+            this.routes = [];
           }
         },
 
@@ -816,7 +1073,9 @@
             lineCap: 'round',
             lineJoin: 'round'
           }).addTo(this.map);
-          this.map.fitBounds(this.currentPolyline.getBounds(), { padding: [50, 50] });
+          if (coordinates.length > 0) {
+            this.map.fitBounds(this.currentPolyline.getBounds(), { padding: [50, 50] });
+          }
         },
 
         getStopZoneLetter(stop) {
@@ -1489,7 +1748,7 @@
           // ponytail: end behavior = cleanup + fitBounds; change here for other behaviors
           this._cleanupRide();
           // Restore view to full route
-          if (this.currentPolyline) {
+          if (this.currentPolyline && this.currentPolyline.getLatLngs().length > 0) {
             this.map.fitBounds(this.currentPolyline.getBounds(), { padding: [50, 50] });
           }
         },

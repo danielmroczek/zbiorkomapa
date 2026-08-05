@@ -5,8 +5,36 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const dataDir = path.join(projectRoot, "data");
-const outputDir = path.join(projectRoot, "public", "dist");
+
+function slugify(name) {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+}
+
+function loadCitiesConfig() {
+  const configPath = path.join(projectRoot, "cities.json");
+  if (!fs.existsSync(configPath)) {
+    console.error("Brak pliku cities.json w katalogu głównym projektu.");
+    process.exit(1);
+  }
+  return JSON.parse(fs.readFileSync(configPath, "utf8"));
+}
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  let cityFilter = null;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--city" && args[i + 1]) {
+      cityFilter = args[i + 1];
+      i++;
+    }
+  }
+  return { cityFilter };
+}
 
 // Parse CSV helper function - optimized with proper quote handling
 function parseCSV(text) {
@@ -157,78 +185,57 @@ function parseRouteDescStops(routeDesc) {
   return directions;
 }
 
-async function main() {
+async function processCity(cityConfig) {
+  const slug = slugify(cityConfig.name);
+  const dataDir = path.join(projectRoot, "data", slug);
+  const outputDir = path.join(projectRoot, "public", "dist", slug);
+
+  console.log(`\n${"=".repeat(60)}`);
+  console.log(`Przetwarzam: ${cityConfig.name} (${slug})`);
+  console.log(`${"=".repeat(60)}`);
+
   try {
-    // Create output directory
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-      console.log(`Utworzono katalog: ${outputDir}`);
+  // Create output directory
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+    console.log(`Utworzono katalog: ${outputDir}`);
+  }
+
+  // Load CSV files
+  console.log("Wczytuję dane GTFS...");
+
+  const readOptionalCSV = (filename) => {
+    const filePath = path.join(dataDir, filename);
+    if (!fs.existsSync(filePath)) {
+      console.log(`  ${filename}: brak (pominięto)`);
+      return [];
     }
+    const text = fs.readFileSync(filePath, "utf8");
+    const data = parseCSV(text);
+    console.log(`  ${filename}: ${data.length} rekordów`);
+    return data;
+  };
 
-    // Load CSV files
-    console.log("Wczytuję dane GTFS...");
+  const shapes = readOptionalCSV("shapes.txt");
+  const stops = readOptionalCSV("stops.txt");
+  const trips = readOptionalCSV("trips.txt");
+  const stopTimes = readOptionalCSV("stop_times.txt");
+  const routes = readOptionalCSV("routes.txt");
+  const feedInfo = readOptionalCSV("feed_info.txt");
+  const calendar = readOptionalCSV("calendar.txt");
+  const calendarDates = readOptionalCSV("calendar_dates.txt");
 
-    const shapesText = fs.readFileSync(
-      path.join(dataDir, "shapes.txt"),
-      "utf8",
-    );
-    const shapes = parseCSV(shapesText);
-    console.log(`  shapes.txt: ${shapes.length} rekordów`);
+  const agencyText = fs.existsSync(path.join(dataDir, "agency.txt"))
+    ? fs.readFileSync(path.join(dataDir, "agency.txt"), "utf8")
+    : "";
+  const agencies = agencyText ? parseCSV(agencyText) : [];
+  console.log(`  agency.txt: ${agencies.length} rekordów`);
 
-    const stopsText = fs.readFileSync(path.join(dataDir, "stops.txt"), "utf8");
-    const stops = parseCSV(stopsText);
-    console.log(`  stops.txt: ${stops.length} rekordów`);
-
-    const tripsText = fs.readFileSync(path.join(dataDir, "trips.txt"), "utf8");
-    const trips = parseCSV(tripsText);
-    console.log(`  trips.txt: ${trips.length} rekordów`);
-
-    const stopTimesText = fs.readFileSync(
-      path.join(dataDir, "stop_times.txt"),
-      "utf8",
-    );
-    const stopTimes = parseCSV(stopTimesText);
-    console.log(`  stop_times.txt: ${stopTimes.length} rekordów`);
-
-    const routesText = fs.readFileSync(
-      path.join(dataDir, "routes.txt"),
-      "utf8",
-    );
-    const routes = parseCSV(routesText);
-    console.log(`  routes.txt: ${routes.length} rekordów`);
-
-    const feedInfoText = fs.readFileSync(
-      path.join(dataDir, "feed_info.txt"),
-      "utf8",
-    );
-    const feedInfo = parseCSV(feedInfoText);
-    console.log(`  feed_info.txt: ${feedInfo.length} rekordów`);
-
-    const calendarText = fs.readFileSync(
-      path.join(dataDir, "calendar.txt"),
-      "utf8",
-    );
-    const calendar = parseCSV(calendarText);
-    console.log(`  calendar.txt: ${calendar.length} rekordów`);
-
-    const calendarDatesText = fs.readFileSync(
-      path.join(dataDir, "calendar_dates.txt"),
-      "utf8",
-    );
-    const calendarDates = parseCSV(calendarDatesText);
-    console.log(`  calendar_dates.txt: ${calendarDates.length} rekordów`);
-
-    const agencyText = fs.existsSync(path.join(dataDir, "agency.txt"))
-      ? fs.readFileSync(path.join(dataDir, "agency.txt"), "utf8")
-      : "";
-    const agencies = agencyText ? parseCSV(agencyText) : [];
-    console.log(`  agency.txt: ${agencies.length} rekordów`);
-
-    const audioText = fs.existsSync(path.join(dataDir, "audio.csv"))
-      ? fs.readFileSync(path.join(dataDir, "audio.csv"), "utf8")
-      : "";
-    const audioData = audioText ? parseCSV(audioText) : [];
-    console.log(`  audio.csv: ${audioData.length} rekordów`);
+  const audioText = fs.existsSync(path.join(dataDir, "audio.csv"))
+    ? fs.readFileSync(path.join(dataDir, "audio.csv"), "utf8")
+    : "";
+  const audioData = audioText ? parseCSV(audioText) : [];
+  console.log(`  audio.csv: ${audioData.length} rekordów`);
 
     // Build indexes for O(1) lookups
     console.log("Buduję indeksy...");
@@ -415,14 +422,15 @@ async function main() {
       const routeDescDirections = parseRouteDescStops(routeInfo.route_desc);
 
       // Group trips by direction, but only include directions that are in the official route_long_name
+      // Fallback: if no direction names parsed, accept all trip_headsigns (or use "default")
+      const hasOfficialDirections = directionNames.length > 0;
       const directions = new Map();
       const onDemandStatsByStopId = new Map();
       for (const trip of routeTrips) {
         const directionName = extractDirectionName(trip.trip_headsign);
 
-        // Only include this direction if it matches one of the official direction names
-        // Check if the extracted direction name appears in the official direction pattern
-        const isOfficialDirection = directionNames.some((officialName) => {
+        // If no official direction names, accept all (minimal GTFS feeds may lack route_long_name)
+        const isOfficialDirection = !hasOfficialDirections || directionNames.some((officialName) => {
           const officialClean = officialName.replace(/\^[^|]*/g, "").trim();
           const officialLower = normalizeLookupValue(officialClean);
           const directionLower = normalizeLookupValue(directionName);
@@ -851,13 +859,89 @@ async function main() {
     }));
 
     const indexFile = path.join(outputDir, "routes.json");
-    fs.writeFileSync(indexFile, JSON.stringify(routesList, null, 2), "utf8");
+
+    // Compute centroid from all stops for map center
+    let mapCenter = null;
+    if (stops.length > 0) {
+      let sumLat = 0, sumLon = 0;
+      for (const s of stops) {
+        sumLat += parseFloat(s.stop_lat) || 0;
+        sumLon += parseFloat(s.stop_lon) || 0;
+      }
+      mapCenter = [sumLat / stops.length, sumLon / stops.length];
+    }
+
+    const indexData = {
+      routes: routesList,
+      map_center: mapCenter,
+    };
+
+    fs.writeFileSync(indexFile, JSON.stringify(indexData, null, 2), "utf8");
     console.log(
       `\nGotowe! Zapisano ${routeData.length} linii w katalogu: ${outputDir}`,
     );
     console.log(`Indeks linii: ${indexFile}`);
+    if (mapCenter) {
+      console.log(`Centrum mapy: [${mapCenter[0].toFixed(4)}, ${mapCenter[1].toFixed(4)}]`);
+    }
   } catch (err) {
     console.error("Błąd skryptu:", err);
+    throw err;
+  }
+}
+
+async function main() {
+  try {
+    const { cityFilter } = parseArgs();
+    const config = loadCitiesConfig();
+
+    let cities = config.cities;
+    if (cityFilter) {
+      cities = cities.filter((c) => slugify(c.name) === cityFilter);
+      if (cities.length === 0) {
+        console.error(`Nie znaleziono miasta o slug: "${cityFilter}"`);
+        console.error(
+          "Dostępne:",
+          config.cities.map((c) => slugify(c.name)).join(", "),
+        );
+        process.exit(1);
+      }
+    }
+
+    for (const city of cities) {
+      try {
+        await processCity(city);
+      } catch (err) {
+        console.error(`[${city.name}] Błąd przetwarzania:`, err.message);
+        process.exitCode = 1;
+      }
+    }
+
+    // Generate frontend-only cities.json in public/dist/
+    const distDir = path.join(projectRoot, "public", "dist");
+    if (!fs.existsSync(distDir)) {
+      fs.mkdirSync(distDir, { recursive: true });
+    }
+
+    const frontendCities = config.cities.map((c) => {
+      const slug = slugify(c.name);
+      const entry = {
+        name: c.name,
+        slug: slug,
+        audioSource: c.audioSource || "tts",
+        ttsLang: c.ttsLang || "pl-PL",
+      };
+      if (c.audioBaseUrl) {
+        entry.audioBaseUrl = c.audioBaseUrl;
+      }
+      return entry;
+    });
+
+    const citiesFile = path.join(distDir, "cities.json");
+    fs.writeFileSync(citiesFile, JSON.stringify(frontendCities, null, 2), "utf8");
+    console.log(`\nZapisano konfigurację miast: ${citiesFile}`);
+  } catch (err) {
+    console.error("Błąd:", err);
     process.exitCode = 1;
   }
 }
