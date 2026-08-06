@@ -12,9 +12,6 @@
   <script src="engine-sound.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"></script>
   <style>
-    [x-cloak] { display: none !important; }
-  </style>
-  <style>
     @import url('https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;700&family=Inter&family=Roboto&display=swap');
 
     :root {
@@ -23,7 +20,7 @@
       --line-zone-C: #e6e600;
       --line-zone-D: #0B93F6;
       --ride-trail-color: #2962FF;
-      --ride-stop-highlight-color: #2962FF;
+      --ride-stop-highlight-color: var(--ride-trail-color);
     }
 
     body {
@@ -31,6 +28,8 @@
       padding: 0;
       font-family: 'Roboto', sans-serif;
     }
+
+    [x-cloak] { display: none !important; }
 
     #map {
       height: 100vh;
@@ -560,9 +559,6 @@
         engineSoundEnabled: true,
         readStopNamesEnabled: true,
 
-        // TTS state
-        ttsUtterance: null,
-
         LABEL_OFFSETS: {
           'right': { direction: 'right', offset: [5, 0] },
           'left': { direction: 'left', offset: [-5, 0] },
@@ -582,17 +578,38 @@
         },
 
         // TTS: speak text using browser speechSynthesis
-        ttsSpeak(text) {
+        async ttsSpeak(text) {
+          if (!('speechSynthesis' in window)) return;
+
+          const voices = await this.getTTSVoices();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = this.currentCityConfig?.ttsLang || 'pl-PL';
+          utterance.rate = 0.9;
+
+          const targetLang = utterance.lang.split('-')[0];
+          const voice = voices.find(v => v.lang.startsWith(targetLang));
+          if (voice) utterance.voice = voice;
+
           return new Promise((resolve) => {
-            if (!('speechSynthesis' in window)) { resolve(); return; }
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = this.currentCityConfig?.ttsLang || 'pl-PL';
-            utterance.rate = 0.9;
             utterance.onend = () => resolve();
             utterance.onerror = () => resolve();
-            this.ttsUtterance = utterance;
             speechSynthesis.speak(utterance);
           });
+        },
+
+        // Get TTS voices, waiting for async load if needed (some browsers fire voiceschanged late)
+        _ttsVoicesPromise: null,
+        getTTSVoices() {
+          if (this._ttsVoicesPromise) return this._ttsVoicesPromise;
+          this._ttsVoicesPromise = new Promise((resolve) => {
+            if (!('speechSynthesis' in window)) { resolve([]); return; }
+            const voices = speechSynthesis.getVoices();
+            if (voices.length > 0) { resolve(voices); return; }
+            speechSynthesis.addEventListener('voiceschanged', () => {
+              resolve(speechSynthesis.getVoices());
+            }, { once: true });
+          });
+          return this._ttsVoicesPromise;
         },
 
         // Play a short beep using WebAudio (for TTS cities)

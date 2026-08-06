@@ -825,11 +825,13 @@ async function processCity(cityConfig) {
       }
 
       // Build route object with all directions
+      const routeColor = routeInfo.route_color || "525252";
+      const routeTextColor = routeInfo.route_text_color || "FFFFFF";
       const routeObj = {
         route_id: routeId,
         short_name: routeInfo.route_short_name,
-        color: routeInfo.route_color,
-        text_color: routeInfo.route_text_color,
+        color: routeColor,
+        text_color: routeTextColor,
         type: getRouteTypeString(routeInfo.route_type),
         agency_name: routeInfo.agency_id
           ? agencyById.get(routeInfo.agency_id)?.agency_name ||
