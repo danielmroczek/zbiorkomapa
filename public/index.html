@@ -635,6 +635,14 @@
             <input type="checkbox" style="width: auto; margin: 0;" x-model="readStopNamesEnabled" @change="onReadStopNamesChange()">
             <span style="font-size: 12px;">Czytaj przystanki</span>
           </label>
+          <div class="control-group" style="margin-top: 6px; margin-bottom: 0;">
+            <label for="ride-speed-select" style="font-size: 12px;">Prędkość przejazdu:</label>
+            <select id="ride-speed-select" x-model="rideSpeed" @change="onRideSpeedChange()"
+              style="width: auto; padding: 3px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 3px;">
+              <option value="fast">Szybko (~3s/przystanek)</option>
+              <option value="slow">Wolno (~6s/przystanek)</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -722,6 +730,7 @@
           trailLine: null,
           animFrameId: null,
           vMax: 0,            // cruise speed in km/s (computed per route)
+          accelTime: 1,       // seconds for accel/decel phase (1=fast, 2=slow)
           pauseState: null,   // { stopIndex, t } — resume point after unpause
           currentStopIndex: 0,
           currentT: 0,        // last known animation progress (0-1)
@@ -742,6 +751,7 @@
         engineSound: null,
         engineSoundEnabled: true,
         readStopNamesEnabled: true,
+        rideSpeed: 'fast',  // 'fast' (3s avg) or 'slow' (6s avg)
 
         LABEL_OFFSETS: {
           'right': { direction: 'right', offset: [5, 0] },
@@ -1038,6 +1048,8 @@
           if (localStorage.getItem('printPreview') === 'true') this.printPreview = true;
           if (localStorage.getItem('engineSoundEnabled') === 'false') this.engineSoundEnabled = false;
           if (localStorage.getItem('readStopNamesEnabled') === 'false') this.readStopNamesEnabled = false;
+          const savedSpeed = localStorage.getItem('rideSpeed');
+          if (savedSpeed === 'slow' || savedSpeed === 'fast') this.rideSpeed = savedSpeed;
         },
 
         async restoreLastRoute() {
@@ -1510,6 +1522,10 @@
           localStorage.setItem('readStopNamesEnabled', this.readStopNamesEnabled ? 'true' : 'false');
         },
 
+        onRideSpeedChange() {
+          localStorage.setItem('rideSpeed', this.rideSpeed);
+        },
+
         nextDirectionOrRoute() {
           if (!this.currentRoute || this.directions.length === 0) return;
 
@@ -1659,10 +1675,13 @@
           this.ride.lineLen = lineLen;
           this.ride.stopDists = stopDists;
 
-          // Compute cruise speed: avg segment distance / 2 → avg segment time ≈ 3s
-          // (1s accel + cruise + 1s decel; cruise time = dist/vMax - 1)
+          // Compute cruise speed based on ride speed setting
+          // fast: avg 3s/stop, accel=1s → vMax = avgSegDist / 2
+          // slow: avg 6s/stop, accel=2s → vMax = avgSegDist / 4
           const avgSegDist = stops.length > 1 ? lineLen / (stops.length - 1) : lineLen;
-          this.ride.vMax = avgSegDist / 2; // km/s
+          const isSlow = this.rideSpeed === 'slow';
+          this.ride.accelTime = isSlow ? 2 : 1; // seconds
+          this.ride.vMax = avgSegDist / (isSlow ? 4 : 2); // km/s
 
           // Create vehicle marker (emoji, easy to swap to circle)
           const routeType = this.currentRoute?.type;
@@ -1831,16 +1850,18 @@
             if (segLen <= 0) { resolve(); return; }
 
             const vMax = this.ride.vMax; // km/s
+            const accelTime = this.ride.accelTime; // seconds
 
             // Compute segment duration based on accel/cruise/decel model
-            // Accel = 1s (0→vMax), Decel = 1s (vMax→0)
-            // If segLen >= vMax: full profile, duration = segLen/vMax + 1
-            // If segLen < vMax: overlapping accel+decel, duration = 2·√(segLen/vMax)
+            // Accel = accelTime (0→vMax), Decel = accelTime (vMax→0)
+            // If segLen >= vMax * accelTime: full profile, duration = segLen/vMax + accelTime
+            // If segLen < vMax * accelTime: overlapping, duration = 2·accelTime·√(segLen/(vMax*accelTime))
+            const accelDist = vMax * accelTime; // distance covered during accel
             let duration; // seconds
-            if (segLen >= vMax) {
-              duration = segLen / vMax + 1;
+            if (segLen >= accelDist) {
+              duration = segLen / vMax + accelTime;
             } else {
-              duration = 2 * Math.sqrt(segLen / vMax);
+              duration = 2 * accelTime * Math.sqrt(segLen / accelDist);
             }
             const durationMs = duration * 1000;
 
@@ -1848,34 +1869,38 @@
             const progressAndSpeed = (t) => {
               const elapsed = t * duration; // seconds
               let pos, speed;
-              if (segLen >= vMax) {
-                // Full profile: accel(1s) → cruise → decel(1s)
-                const cruiseTime = duration - 2; // seconds
-                if (elapsed < 1) {
+              if (segLen >= accelDist) {
+                // Full profile: accel(accelTime) → cruise → decel(accelTime)
+                const cruiseTime = duration - 2 * accelTime; // seconds
+                if (elapsed < accelTime) {
                   // Accel phase
-                  pos = 0.5 * vMax * elapsed * elapsed;
-                  speed = elapsed; // 0→1
-                } else if (elapsed < 1 + cruiseTime) {
+                  const f = elapsed / accelTime; // 0→1
+                  pos = 0.5 * accelDist * f * f;
+                  speed = f;
+                } else if (elapsed < accelTime + cruiseTime) {
                   // Cruise phase
-                  pos = 0.5 * vMax + vMax * (elapsed - 1);
+                  pos = 0.5 * accelDist + vMax * (elapsed - accelTime);
                   speed = 1;
                 } else {
                   // Decel phase
                   const dt = duration - elapsed;
-                  pos = segLen - 0.5 * vMax * dt * dt;
-                  speed = dt; // 1→0
+                  const f = dt / accelTime; // 1→0
+                  pos = segLen - 0.5 * accelDist * f * f;
+                  speed = f;
                 }
               } else {
                 // Overlapping: accel then decel, peak speed < vMax
-                const t1 = Math.sqrt(segLen / vMax); // accel time
-                const vPeak = vMax * t1;
+                const t1 = accelTime * Math.sqrt(segLen / accelDist); // accel time
+                const vPeak = vMax * (t1 / accelTime);
                 if (elapsed < t1) {
-                  pos = 0.5 * vMax * elapsed * elapsed;
-                  speed = elapsed / t1; // 0→1 (fraction of vPeak)
+                  const f = elapsed / t1; // 0→1
+                  pos = 0.5 * segLen * f * f;
+                  speed = f;
                 } else {
                   const dt = 2 * t1 - elapsed;
-                  pos = segLen - 0.5 * vMax * dt * dt;
-                  speed = dt / t1; // 1→0
+                  const f = dt / t1; // 1→0
+                  pos = segLen - 0.5 * segLen * f * f;
+                  speed = f;
                 }
               }
               return { frac: pos / segLen, speed: Math.max(0, Math.min(1, speed)) };
@@ -1978,6 +2003,7 @@
           this.ride.turfLine = null;
           this.ride.stopDists = null;
           this.ride.vMax = 0;
+          this.ride.accelTime = 1;
           this.isRiding = false;
           this.isPaused = false;
           this.ride.pauseState = null;
