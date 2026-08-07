@@ -11,514 +11,7 @@
   <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
   <script src="engine-sound.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Alumni+Sans:wght@400;700&family=Inter&family=Roboto&display=swap');
-
-    :root {
-      --line-zone-A: #33a864;
-      --line-zone-B: #d70000;
-      --line-zone-C: #e6e600;
-      --line-zone-D: #0B93F6;
-      --ride-trail-color: #2962FF;
-      --ride-stop-highlight-color: var(--ride-trail-color);
-    }
-
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: 'Roboto', sans-serif;
-      height: 100vh;
-      display: flex;
-      overflow: hidden;
-    }
-
-    [x-cloak] { display: none !important; }
-
-    #map {
-      flex: 1 1 auto;
-      height: 100%;
-      min-width: 0;
-      min-height: 0;
-      box-sizing: border-box;
-    }
-
-    .info-panel {
-      background: white;
-      padding: 15px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
-      flex: 0 0 330px;
-      width: 330px;
-      overflow-y: auto;
-      order: 2;
-      box-sizing: border-box;
-    }
-
-    .info-panel h2 {
-      margin: 0 0 10px 0;
-      color: #333;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .route-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Alumni Sans', sans-serif;
-      font-weight: 700;
-      font-size: 32px;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      transition: all 0.2s ease;
-    }
-
-    .route-badge.bus {
-      width: auto;
-      min-width: 44px;
-      height: 40px;
-      padding: 0 12px;
-      border-radius: 2px;
-    }
-
-    .route-badge.light-bg {
-      border: 1px solid;
-    }
-
-    .route-info {
-      font-size: 14px;
-      color: #666;
-    }
-
-    .keyboard-hint {
-      font-size: 11px;
-      color: #999;
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid #eee;
-    }
-
-    .kbd {
-      display: inline-block;
-      padding: 2px 6px;
-      font-size: 10px;
-      font-family: monospace;
-      background: #f5f5f5;
-      border: 1px solid #ddd;
-      border-radius: 3px;
-      margin: 0 2px;
-    }
-
-    .route-controls {
-      margin-top: 15px;
-      padding-top: 10px;
-      border-top: 1px solid #eee;
-    }
-
-    .control-group {
-      margin-bottom: 10px;
-    }
-
-    .control-group label {
-      display: block;
-      font-size: 12px;
-      margin-bottom: 3px;
-      color: #555;
-    }
-
-    select {
-      width: 100%;
-      padding: 5px;
-      font-size: 14px;
-      border: 1px solid #ccc;
-      border-radius: 3px;
-    }
-
-    .stop-label {
-      background: white;
-      border-radius: 0;
-      border: 1px solid black;
-      padding: .01em .2em;
-      text-transform: uppercase;
-      font-size: var(--stop-label-font-size, 8px);
-      font-weight: 700;
-      white-space: nowrap;
-      box-shadow: none;
-      cursor: pointer;
-      pointer-events: auto;
-    }
-
-    .stop-zone-marker {
-      width: 16px;
-      height: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      background: white;
-      border: 2px solid var(--zone-color, #333);
-      color: var(--zone-color, #333);
-      font-size: 8px;
-      font-weight: 700;
-      line-height: 1;
-      box-sizing: border-box;
-      user-select: none;
-      pointer-events: none;
-      transform: translateY(-1px);
-    }
-
-    .stop-label.ride-active-stop {
-      border-width: 2px;
-      border-color: var(--ride-stop-highlight-color) !important;
-    }
-
-    .stop-label.on-demand-stop-label {
-      border-style: dotted;
-      /* border-width: 2px; */
-    }
-
-    .stop-label.leaflet-tooltip-left::before {
-      border-left-color: black;
-    }
-
-    .stop-label.leaflet-tooltip-top::before {
-      border-top-color: black;
-    }
-
-    .stop-label.leaflet-tooltip-right::before {
-      border-right-color: black;
-    }
-
-    .stop-label.leaflet-tooltip-bottom::before {
-      border-bottom-color: black;
-    }
-
-    /* Print info box base styles (shared screen + print) */
-    .print-info-box {
-      position: absolute;
-      bottom: 10mm;
-      left: 10mm;
-      background: white;
-      border: 2px solid #333;
-      padding: 10px 15px;
-      font-size: 12px;
-      z-index: 10000;
-    }
-
-    /* Print info box position classes */
-    .print-info-box.print-top {
-      bottom: auto;
-      top: 10mm;
-    }
-
-    .print-info-box.print-top-left {
-      bottom: auto;
-      top: 10mm;
-      left: 10mm;
-    }
-
-    .print-info-box.print-top-right {
-      bottom: auto;
-      top: 10mm;
-      right: 10mm;
-      left: auto;
-    }
-
-    .print-info-box.print-bottom-left {
-      bottom: 10mm;
-      left: 10mm;
-    }
-
-    .print-info-box.print-bottom-right {
-      bottom: 10mm;
-      right: 10mm;
-      left: auto;
-    }
-
-    .print-route-number {
-      font-size: 24px;
-      font-weight: 700;
-      color: #333;
-      margin-bottom: 5px;
-    }
-
-    .print-route-direction {
-      font-size: 14px;
-      font-weight: 600;
-      color: #555;
-      margin-bottom: 5px;
-    }
-
-    .print-route-details {
-      font-size: 11px;
-      color: #666;
-      margin-bottom: 3px;
-    }
-
-    .print-dates {
-      font-size: 10px;
-      color: #888;
-      margin-top: 5px;
-    }
-
-    @media screen {
-      .print-info-box {
-        display: none;
-      }
-
-      .print-info-box.preview-visible {
-        display: block;
-        opacity: 0.7;
-      }
-    }
-
-    /* City modal */
-    .city-modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.5);
-      z-index: 2000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .city-modal {
-      background: white;
-      border-radius: 8px;
-      padding: 30px;
-      max-width: 400px;
-      width: 90%;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    }
-
-    .city-modal h2 {
-      margin: 0 0 20px 0;
-      text-align: center;
-      color: #333;
-      font-size: 20px;
-    }
-
-    .city-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-
-    .city-list li {
-      margin-bottom: 10px;
-    }
-
-    .city-list button {
-      width: 100%;
-      padding: 14px 20px;
-      font-size: 16px;
-      border: 2px solid #e0e0e0;
-      border-radius: 6px;
-      background: white;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      text-align: left;
-    }
-
-    .city-list button:hover {
-      border-color: #2962FF;
-      background: #f5f7ff;
-    }
-
-    .city-list button.active {
-      border-color: #2962FF;
-      background: #e8eeff;
-      font-weight: 600;
-    }
-
-    .city-selector-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 12px;
-      color: #666;
-      cursor: pointer;
-      border: none;
-      background: none;
-      padding: 2px 0;
-      margin-bottom: 4px;
-    }
-
-    .city-selector-btn:hover {
-      color: #2962FF;
-    }
-
-    .map-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-
-    .map-header .header-buttons {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      align-items: flex-end;
-    }
-
-    .map-header .route-badge {
-      margin: 0;
-    }
-
-    .help-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 12px;
-      color: #666;
-      cursor: pointer;
-      border: none;
-      background: none;
-      padding: 2px 0;
-    }
-
-    .help-btn:hover {
-      color: #2962FF;
-    }
-
-    .help-modal-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.5);
-      z-index: 2100;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .help-modal {
-      background: white;
-      border-radius: 8px;
-      padding: 30px;
-      max-width: 400px;
-      width: 90%;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-      max-height: 90vh;
-      overflow-y: auto;
-    }
-
-    .help-modal h2 {
-      margin: 0 0 12px 0;
-      text-align: center;
-      color: #333;
-      font-size: 20px;
-    }
-
-    .help-modal .help-close {
-      display: block;
-      margin: 18px auto 0;
-      padding: 8px 20px;
-      font-size: 14px;
-      cursor: pointer;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      background: #f5f5f5;
-    }
-
-    .help-modal .help-close:hover {
-      background: #e9e9e9;
-    }
-
-    .help-modal .help-desc {
-      font-size: 13px;
-      color: #666;
-      text-align: center;
-      margin-bottom: 16px;
-    }
-
-    .help-modal .help-credits {
-      font-size: 11px;
-      color: #999;
-      text-align: center;
-      margin-top: 16px;
-      padding-top: 10px;
-      border-top: 1px solid #eee;
-    }
-
-    /* Pure-CSS tabs (radio :checked pattern, no JS) */
-    .tabs { margin-top: 10px; }
-
-    .tabs > input { display: none; }
-
-    .tab-labels {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 10px;
-    }
-
-    .tab-labels label {
-      flex: 1;
-      text-align: center;
-      padding: 7px 0;
-      font-size: 13px;
-      cursor: pointer;
-      border-radius: 6px;
-      background: #f1f3f5;
-      color: #555;
-      transition: all 0.15s ease;
-    }
-
-    .tab-panel { display: none; }
-
-    #tab-info:checked ~ [data-tab="info"],
-    #tab-config:checked ~ [data-tab="config"] {
-      display: block;
-    }
-
-    #tab-info:checked ~ .tab-labels label[for="tab-info"],
-    #tab-config:checked ~ .tab-labels label[for="tab-config"] {
-      background: #2962FF;
-      color: #fff;
-      font-weight: 600;
-    }
-
-    /* Portrait: stack panel on top, map below, split screen in half */
-    @media (max-aspect-ratio: 1/1) {
-      body {
-        flex-direction: column;
-      }
-
-      .info-panel {
-        flex: 0 0 50%;
-        width: 100%;
-        order: 1;
-      }
-
-      #map {
-        flex: 1 1 auto;
-        order: 2;
-      }
-    }
-
-    @media print {
-      .info-panel {
-        display: none;
-      }
-
-      .leaflet-tile-pane {
-        opacity: 0.3;
-      }
-
-      .leaflet-control-zoom,
-      .leaflet-control-attribution {
-        display: none;
-      }
-
-      .print-info-box {
-        visibility: visible;
-        page-break-inside: avoid;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="styles.css">
 </head>
 
 <body x-data="_busApp()" x-init="init()">
@@ -589,15 +82,15 @@
         <strong>Długość trasy:</strong> <span x-text="routeLength">-</span> km<br>
         <strong>Liczba przystanków:</strong> <span x-text="stopCount">-</span><br>
         <strong>Operator:</strong> <span x-text="agencyName">-</span>
-        <div class="control-group" style="margin-top: 15px;" x-show="currentDirection">
-          <div style="display: flex; gap: 6px;">
-            <button @click="togglePlayPause()" :disabled="!currentDirection"
-              style="flex: 1; padding: 8px; font-size: 14px; cursor: pointer; border: 1px solid #ccc; border-radius: 3px; background: #f5f5f5;"
-              :style="isRiding && !isPaused ? 'background: #fff3e0; border-color: #e65100;' : ''">
+        <div class="ride-controls control-group" x-show="currentDirection">
+          <div class="ride-btn-row">
+            <button
+              class="ride-btn"
+              :class="{ active: isRiding && !isPaused }"
+              @click="togglePlayPause()" :disabled="!currentDirection">
               <span x-text="isRiding && !isPaused ? '⏸ Pauza' : '▶ Przejazd'"></span>
             </button>
-            <button @click="stopRide()" x-show="isRiding || isPaused"
-              style="padding: 8px 12px; font-size: 14px; cursor: pointer; border: 1px solid #ccc; border-radius: 3px; background: #ffe0e0; border-color: #d70000;">
+            <button class="ride-btn-stop" @click="stopRide()" x-show="isRiding || isPaused">
               ⏹
             </button>
           </div>
@@ -606,11 +99,10 @@
       <div class="tab-panel" data-tab="config">
         <div class="control-group">
           <label for="font-size-select">Rozmiar czcionki (px):</label>
-          <input id="font-size-select" type="number" min="6" max="20" step="1" x-model.number="fontSize"
-            @input="onFontSizeChange()"
-            style="width: 70px; padding: 5px; font-size: 14px; border: 1px solid #ccc; border-radius: 3px;">
+          <input id="font-size-select" class="config-input" type="number" min="6" max="20" step="1" x-model.number="fontSize"
+            @input="onFontSizeChange()">
         </div>
-        <div class="control-group" style="margin-top: 10px;">
+        <div class="control-group">
           <label for="print-position-select">Pozycja ramki (druk):</label>
           <select id="print-position-select" x-model="printPosition" @change="onPrintPositionChange()">
             <option value="bottom-left">Dół lewo (domyślnie)</option>
@@ -619,26 +111,25 @@
             <option value="top-right">Góra prawo</option>
           </select>
         </div>
-        <div class="control-group" style="margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-            <input type="checkbox" id="print-preview-checkbox" style="width: auto; margin: 0;" x-model="printPreview"
+        <div class="control-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="print-preview-checkbox" x-model="printPreview"
               @change="onPrintPreviewChange()">
             <span>Pokaż ramkę na ekranie</span>
           </label>
         </div>
-        <div class="control-group" style="margin-top: 10px;" x-show="currentDirection">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 6px;">
-            <input type="checkbox" style="width: auto; margin: 0;" x-model="engineSoundEnabled" @change="onEngineSoundChange()">
-            <span style="font-size: 12px;">Dźwięk silnika</span>
+        <div class="control-group" x-show="currentDirection">
+          <label class="checkbox-label">
+            <input type="checkbox" x-model="engineSoundEnabled" @change="onEngineSoundChange()">
+            <span>Dźwięk silnika</span>
           </label>
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 6px;">
-            <input type="checkbox" style="width: auto; margin: 0;" x-model="readStopNamesEnabled" @change="onReadStopNamesChange()">
-            <span style="font-size: 12px;">Czytaj przystanki</span>
+          <label class="checkbox-label">
+            <input type="checkbox" x-model="readStopNamesEnabled" @change="onReadStopNamesChange()">
+            <span>Czytaj przystanki</span>
           </label>
-          <div class="control-group" style="margin-top: 6px; margin-bottom: 0;">
-            <label for="ride-speed-select" style="font-size: 12px;">Prędkość przejazdu:</label>
-            <select id="ride-speed-select" x-model="rideSpeed" @change="onRideSpeedChange()"
-              style="width: auto; padding: 3px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 3px;">
+          <div class="control-group">
+            <label for="ride-speed-select">Prędkość przejazdu:</label>
+            <select id="ride-speed-select" x-model="rideSpeed" @change="onRideSpeedChange()">
               <option value="fast">Szybko (~3s/przystanek)</option>
               <option value="slow">Wolno (~6s/przystanek)</option>
             </select>
@@ -1738,7 +1229,7 @@
         // ponytail: vehicle icon as a function so it's easy to swap emoji → circle
         _createVehicleIcon(emoji, transform = '') {
           return L.divIcon({
-            html: `<div style="font-size: 24px; line-height: 1; text-align: center; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));${transform ? ' transform:' + transform + ';' : ''}">${emoji}</div>`,
+            html: `<div class="vehicle-icon"${transform ? ` style="transform: ${transform}"` : ''}>${emoji}</div>`,
             className: '',
             iconSize: [28, 28],
             iconAnchor: [14, 14]
