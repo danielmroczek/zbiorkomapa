@@ -12,6 +12,12 @@
       "gtfsUrl": "https://mkuran.pl/gtfs/swinoujscie.zip",
       "audioSource": "tts",
       "ttsLang": "pl-PL"
+    },
+    {
+      "name": "Gorzów Wielkopolski",
+      "gtfsUrl": "https://bip.mzk-gorzow.com.pl/files/file_add/download/77_gtfsgw.zip",
+      "audioSource": "tts",
+      "ttsLang": "pl-PL"
     }
   ]
 }
