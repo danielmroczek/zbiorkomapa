@@ -76,8 +76,9 @@ input:focus-visible {
 .info-panel {
   flex: 0 0 330px;
   width: 330px;
-  overflow-y: auto;
   order: 2;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   padding: var(--space-lg);
 }
@@ -148,8 +149,13 @@ select,
 
 .config-input { width: 70px; }
 
-/* Ride (play / pause / stop) */
-.ride-controls { margin-top: var(--space-lg); }
+/* Ride (play / pause / stop) — pinned footer of the panel */
+.ride-controls {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--divider);
+  flex: 0 0 auto;
+}
 .ride-btn-row { display: flex; gap: var(--space-sm); }
 
 .ride-btn,
@@ -360,7 +366,14 @@ select,
 }
 
 /* ── Tabs (pure CSS radio :checked) ─────────────────── */
-.tabs { margin-top: var(--space-md); }
+/* .tabs is the scrollable region between the fixed top
+   controls and the pinned bottom ride-controls */
+.tabs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: var(--space-md);
+}
 .tabs > input { display: none; }
 
 .tab-labels {

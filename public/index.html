@@ -82,19 +82,6 @@
         <strong>Długość trasy:</strong> <span x-text="routeLength">-</span> km<br>
         <strong>Liczba przystanków:</strong> <span x-text="stopCount">-</span><br>
         <strong>Operator:</strong> <span x-text="agencyName">-</span>
-        <div class="ride-controls control-group" x-show="currentDirection">
-          <div class="ride-btn-row">
-            <button
-              class="ride-btn"
-              :class="{ active: isRiding && !isPaused }"
-              @click="togglePlayPause()" :disabled="!currentDirection">
-              <span x-text="isRiding && !isPaused ? '⏸ Pauza' : '▶ Przejazd'"></span>
-            </button>
-            <button class="ride-btn-stop" @click="stopRide()" x-show="isRiding || isPaused">
-              ⏹
-            </button>
-          </div>
-        </div>
       </div>
       <div class="tab-panel" data-tab="config">
         <div class="control-group">
@@ -135,6 +122,20 @@
             </select>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="ride-controls control-group" x-show="currentDirection">
+      <div class="ride-btn-row">
+        <button
+          class="ride-btn"
+          :class="{ active: isRiding && !isPaused }"
+          @click="togglePlayPause()" :disabled="!currentDirection">
+          <span x-text="isRiding && !isPaused ? '⏸ Pauza' : '▶ Przejazd'"></span>
+        </button>
+        <button class="ride-btn-stop" @click="stopRide()" x-show="isRiding || isPaused">
+          ⏹
+        </button>
       </div>
     </div>
   </div>
