@@ -1130,8 +1130,8 @@
           const token = this.ride.token;
           const stops = this.currentDirection.stops;
 
-          // Resume from the saved point
-          this._rideToStop(token, stops, pauseState.stopIndex, pauseState.t).catch(e => console.error('Ride error:', e));
+          // Resume from the saved point (resumePre=true continues a paused approach segment)
+          this._rideToStop(token, stops, pauseState.stopIndex, pauseState.t, Boolean(pauseState.pre)).catch(e => console.error('Ride error:', e));
         },
 
         async startRide() {
@@ -1227,6 +1227,8 @@
             const initialLatLngs = initialSlice.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
             trailLine.setLatLngs(initialLatLngs);
           }
+
+          // Zoom to show ~2 average stop distances around the route start
           // Average distance = route length / (number of stops - 1)
           const avgStopDist = stops.length > 1 ? lineLen / (stops.length - 1) : lineLen;
           const viewRadiusKm = avgStopDist * 2;
@@ -1306,13 +1308,30 @@
           this.ride.currentSector = sector;
         },
 
-        async _rideToStop(token, stops, stopIndex, resumeT = 0) {
+        async _rideToStop(token, stops, stopIndex, resumeT = 0, resumePre = false) {
           // Cancelled?
           if (token !== this.ride.token) return;
 
           this.ride.currentStopIndex = stopIndex;
           const isFirstStop = stopIndex === 0;
           const isLastStop = stopIndex === stops.length - 1;
+
+          // Approach segment: from the start of the route line (dist 0) up to the
+          // first stop, so the ride always begins at the very first coordinates.
+          // Runs before the first stop's highlight/audio. Skipped when resuming a
+          // mid-approach animation (resumePre) — handle that below instead.
+          const preDist = this.ride.stopDists ? this.ride.stopDists[0] : 0;
+          if (isFirstStop && !resumePre && preDist > 0) {
+            await this._animateSegment(token, 0, 0, preDist);
+
+            // Cancelled or paused during approach?
+            if (token !== this.ride.token) return;
+            if (this.isPaused) {
+              this.ride.pauseState = { stopIndex: 0, t: 0, pre: true };
+              return;
+            }
+            // Vehicle now sits at the first stop; fall through to highlight/audio
+          }
 
           // Highlight current stop label during ride
           this._highlightStopLabel(stopIndex);
@@ -1346,8 +1365,12 @@
             return;
           }
 
-          // Animate to next stop (pass resumeT for mid-segment resume)
-          await this._animateSegment(token, stopIndex, resumeT);
+          // Animate to next stop. Resume a paused approach segment via preDist.
+          if (resumePre && stopIndex === 0) {
+            await this._animateSegment(token, 0, resumeT, preDist);
+          } else {
+            await this._animateSegment(token, stopIndex, resumeT);
+          }
 
           // Cancelled or paused during animation?
           if (token !== this.ride.token) return;
@@ -1356,7 +1379,7 @@
           this._rideToStop(token, stops, stopIndex + 1, 0);
         },
 
-        _animateSegment(token, stopIndex, resumeT = 0) {
+        _animateSegment(token, stopIndex, resumeT = 0, preDist = null) {
           return new Promise((resolve) => {
             if (token !== this.ride.token) { resolve(); return; }
 
@@ -1364,8 +1387,10 @@
 
             const turfLine = this.ride.turfLine;
             const stopDists = this.ride.stopDists;
-            const startDist = stopDists[stopIndex];
-            const endDist = stopDists[stopIndex + 1];
+            // If preDist is given (approach segment to the first stop), animate
+            // from the start of the line (dist 0) up to the first stop's distance.
+            const startDist = preDist != null ? 0 : stopDists[stopIndex];
+            const endDist = preDist != null ? preDist : stopDists[stopIndex + 1];
             const segLen = endDist - startDist; // km
 
             // Edge case: zero-length segment
@@ -1436,7 +1461,8 @@
                 if (this.isPaused) {
                   const elapsed = now - startTime;
                   const t = Math.min(Math.max(elapsed / durationMs, 0), 1);
-                  this.ride.pauseState = { stopIndex, t };
+                  // Distinguish the approach segment (pre) so resume continues it
+                  this.ride.pauseState = preDist != null ? { stopIndex, t, pre: true } : { stopIndex, t };
                 }
                 this.ride.animResolve = null;
                 resolve();
