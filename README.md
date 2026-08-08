@@ -45,3 +45,6 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 - `public/dist/cities.json` — konfiguracja miast dla frontendu
 - `public/` — frontend oraz zasoby statyczne
 - `scripts/` — skrypty pobierające i przetwarzające dane
+  - `scripts/processor.js` — przetwarza czyste GTFS na zasoby frontendu
+  - `scripts/audio-matcher.js` — samodzielny moduł dopasowujący przystanki do nagrań audio (per miasto; obecnie Poznań)
+  - `scripts/osrm-router.js` — samodzielny moduł wyznaczający trasy drogowe (gdy GTFS nie ma shapes)

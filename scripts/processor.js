@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { routeSegments } from "./osrm-router.js";
+import { createAudioMatcher } from "./audio-matcher.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -232,12 +233,6 @@ async function processCity(cityConfig) {
   const agencies = agencyText ? parseCSV(agencyText) : [];
   console.log(`  agency.txt: ${agencies.length} rekordów`);
 
-  const audioText = fs.existsSync(path.join(dataDir, "audio.csv"))
-    ? fs.readFileSync(path.join(dataDir, "audio.csv"), "utf8")
-    : "";
-  const audioData = audioText ? parseCSV(audioText) : [];
-  console.log(`  audio.csv: ${audioData.length} rekordów`);
-
     // Build indexes for O(1) lookups
     console.log("Buduję indeksy...");
     const stopById = new Map(stops.map((s) => [s.stop_id, s]));
@@ -246,62 +241,13 @@ async function processCity(cityConfig) {
     // Build agency_id -> agency_name mapping
     const agencyById = new Map(agencies.map((a) => [a.agency_id, a]));
 
-    // Build audio lookup map: normalized stop name -> audio_id
-    // Key formats: "poznań|pl. ratajskiego", "koziegłowy|krótka", etc.
-    const audioLookup = new Map();
-    const audioLookupExceptions = new Map([
-      ["wilczak serbska", "P02B2"],
-      ["święty marcin", "P0371"],
-      ["św. marcin", "P0371"],
-    ]);
-    for (const audio of audioData) {
-      const hasStopName = Boolean(
-        audio.nazwa_przystanku && String(audio.nazwa_przystanku).trim(),
-      );
-      const hasLocation = Boolean(
-        audio.miejscowosc && String(audio.miejscowosc).trim(),
-      );
-      if (!audio.audio_id || (!hasStopName && !hasLocation)) continue;
-
-      // Create lookup by stop name (case-insensitive)
-      const originalName = hasStopName
-        ? normalizeLookupValue(audio.nazwa_przystanku)
-        : "";
-      const normalizedName = hasStopName
-        ? normalizeLookupValue(audio.nazwa_przystanku)
-        : "";
-      const location = hasLocation
-        ? normalizeLookupValue(audio.miejscowosc)
-        : "";
-      const normalizedLocation = hasLocation
-        ? normalizeLookupValue(audio.miejscowosc)
-        : "";
-
-      // Store with location prefix if available
-      if (location) {
-        const key = hasStopName
-          ? `${location}|${originalName}`
-          : `${location}|`;
-        const normalizedKey = hasStopName
-          ? `${normalizedLocation}|${normalizedName}`
-          : `${normalizedLocation}|`;
-        audioLookup.set(key, audio.audio_id);
-        audioLookup.set(normalizedKey, audio.audio_id);
-        audioLookup.set(location, audio.audio_id);
-        audioLookup.set(normalizedLocation, audio.audio_id);
-      }
-
-      // Also store without location for fallback
-      if (hasStopName) {
-        if (!audioLookup.has(normalizedName)) {
-          audioLookup.set(normalizedName, audio.audio_id);
-        }
-        if (!audioLookup.has(originalName)) {
-          audioLookup.set(originalName, audio.audio_id);
-        }
-      }
-    }
-    console.log(`  Słownik audio: ${audioLookup.size} wpisów`);
+    // Audio-id resolution is a per-city concern (Poznań has recorded
+    // announcements; other cities are TTS). Delegate to audio-matcher.
+    const audioMatcher = createAudioMatcher({
+      slug,
+      dataDir,
+      audioSource: cityConfig.audioSource,
+    });
 
     // Build stop name -> stop mapping (multiple stops can have same name)
     const stopsByName = new Map();
@@ -636,104 +582,17 @@ async function processCity(cityConfig) {
           for (const stopTime of sortedStopTimes) {
             const stop = stopById.get(stopTime.stop_id);
             if (stop) {
+              let audioId = null;
               audioMatchingStats.totalStops++;
 
-              // Try to find audio_id for this stop using multiple strategies
-              let audioId = null;
-              const rawStopName = String(stop.stop_name || "");
-              const stopName = normalizeLookupValue(rawStopName);
-              const normalizedStopName = stopName;
+              // Resolve the recording audio_id via the city audio matcher.
+              const match = audioMatcher.find(stop.stop_name);
 
-              // Strategy 1: Check for explicit manual overrides first
-              if (!audioId) {
-                const exceptionAudioId = audioLookupExceptions.get(stopName);
-                if (exceptionAudioId) {
-                  audioId = exceptionAudioId;
-                  audioMatchingStats.strategies.exception++;
-                }
-              }
-
-              // Strategy 2: Try exact match with location/name format like "suchy las|sprzeczna"
-              if (!audioId) {
-                const slashMatch = rawStopName.match(/^(.+?)\s*\/\s*(.+)$/i);
-                if (slashMatch) {
-                  const location = normalizeLookupValue(slashMatch[1]).replace(
-                    /\/$/,
-                    "",
-                  );
-                  const stopPart = normalizeLookupValue(slashMatch[2]);
-                  const key = `${location}|${stopPart}`;
-                  if (audioLookup.has(key)) {
-                    audioId = audioLookup.get(key);
-                    audioMatchingStats.strategies.locationSlash++;
-                  }
-                }
-              }
-
-              // Strategy 3: Try direct location-only match for entries like "szlachecin"
-              if (!audioId) {
-                if (audioLookup.has(stopName)) {
-                  audioId = audioLookup.get(stopName);
-                  audioMatchingStats.strategies.locationOnly++;
-                }
-              }
-
-              // Strategy 4: Try to extract city from stop_name and match with location prefix
-              if (!audioId) {
-                // Check if stop_name starts with a city prefix like "Koziegłowy " or "Luboń "
-                const cityMatch = stopName.match(/^([a-zążśźćęółń]+)\s+/i);
-                if (cityMatch) {
-                  const possibleCity = cityMatch[1];
-                  const nameWithoutCity = stopName
-                    .replace(cityMatch[0], "")
-                    .trim();
-                  const key = `${possibleCity}|${nameWithoutCity}`;
-                  if (audioLookup.has(key)) {
-                    audioId = audioLookup.get(key);
-                    audioMatchingStats.strategies.cityPrefix++;
-                  }
-                }
-              }
-
-              // Strategy 5: Try with "Poznań" prefix (most common case)
-              if (!audioId) {
-                const poznanKey = `poznań|${normalizedStopName}`;
-                if (audioLookup.has(poznanKey)) {
-                  audioId = audioLookup.get(poznanKey);
-                  audioMatchingStats.strategies.poznanPrefix++;
-                }
-              }
-
-              // Strategy 6: Try partial match only if the candidate is a strong fit
-              if (!audioId) {
-                for (const [key, value] of audioLookup) {
-                  const audioName = key.includes("|") ? key.split("|")[1] : key;
-                  if (
-                    audioName === stopName ||
-                    audioName.includes(stopName) ||
-                    stopName.includes(audioName)
-                  ) {
-                    // Avoid overly generic matches like "serbska" when the actual stop is "wilczak/serbska"
-                    const isGeneric =
-                      stopName.includes("/") &&
-                      (audioName.length <= 3 ||
-                        audioName === "serbska" ||
-                        audioName === "wilczak");
-                    if (
-                      !isGeneric &&
-                      stopName.length > 3 &&
-                      audioName.length > 3
-                    ) {
-                      audioId = value;
-                      audioMatchingStats.strategies.partialMatch++;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              if (audioId) {
+              if (match) {
+                audioId = match.audio_id;
                 audioMatchingStats.matchedStops++;
+                audioMatchingStats.strategies[match.strategy] =
+                  (audioMatchingStats.strategies[match.strategy] || 0) + 1;
               } else {
                 audioId = "KBING!";
                 audioMatchingStats.unmatchedStops++;
