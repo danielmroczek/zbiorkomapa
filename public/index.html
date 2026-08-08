@@ -261,7 +261,11 @@
         },
 
         getStopAudioUrl(stop) {
-          const audioId = stop?.audio_id || stop?.stop_code || stop?.stop_id;
+          // audio_id is null when this recordings city has no announcement for
+          // the stop. Don't fall back to stop_code/stop_id — that would build a
+          // bogus studio URL. A falsy audio_id → no recording to play.
+          const audioId = stop?.audio_id;
+          if (!audioId) return '';
           return this.getVoiceAnnouncementUrl(`${audioId}.mp3`);
         },
 
@@ -330,7 +334,9 @@
             return this._playStopAudioTTS(stop, isLastStop, isFirstStop);
           } else {
             if (this.audioPlayer) {
-              return this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop, stop);
+              const url = this.getStopAudioUrl(stop);
+              if (!url) return null; // no recording for this stop
+              return this.audioPlayer.play(url, isLastStop, isFirstStop, stop);
             }
           }
         },

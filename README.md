@@ -45,6 +45,21 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 - `public/dist/cities.json` — konfiguracja miast dla frontendu
 - `public/` — frontend oraz zasoby statyczne
 - `scripts/` — skrypty pobierające i przetwarzające dane
-  - `scripts/processor.js` — przetwarza czyste GTFS na zasoby frontendu
+  - `scripts/processor.js` — przetwarza GTFS na zasoby frontendu (oparty o bibliotekę [`gtfs`](https://github.com/BlinkTagInc/node-gtfs)); grupowanie tras wg `direction_id`
   - `scripts/audio-matcher.js` — samodzielny moduł dopasowujący przystanki do nagrań audio (per miasto; obecnie Poznań)
   - `scripts/osrm-router.js` — samodzielny moduł wyznaczający trasy drogowe (gdy GTFS nie ma shapes)
+
+## Uwagi o instalacji
+
+`gtfs` zależy od `better-sqlite3`, w `package.json` wymuszono (przez `overrides`) wersję
+`12.4.1`, która ma prekompilowane binaria — dzięki temu `npm install` działa bez narzędzi
+buildowych (lokalnie na Windows oraz w GitHub Actions). Procesor importuje GTFS do
+per-miastowego cache SQLite (`data/{slug}/gtfs-cache.sqlite`, ignorowany przez git);
+konfigurację node-gtfs generuje sam z `cities.json` (bez dodatkowego pliku config).
+
+## Pola audio w danych
+
+- Dla miast z nagraniami (`audioSource: "recordings"`, obecnie Poznań) każdy przystanek ma
+  pole `audio_id`: identyfikator nagrania albo `null`, gdy nie ma nagrania dla tego przystanku.
+- Dla miast TTS (`audioSource: "tts"`) pole `audio_id` jest **pomijane** — frontend używa
+  zamiany tekstu na mowę (`stop_name`).

@@ -55,6 +55,7 @@ This repository builds an interactive visualizer for public transport routes. Th
 - Download stop-voice mappings (Poznań only): `npm run download:audio`
 - Process GTFS data into the frontend assets: `npm run process`
 - Process one city: `npm run process -- --city swinoujscie`
+- Force re-import of GTFS (bust the sqlite cache): `npm run process -- --force`
 - Full build (download + audio + process): `npm run build`
 
 There is currently no dedicated `npm start` script in package.json. For local preview, serve the static files from public/ with any simple static server.
@@ -76,12 +77,15 @@ There is currently no dedicated `npm start` script in package.json. For local pr
 ## Implementation notes
 
 - The project uses ESM JavaScript in the scripts folder.
-- CSV parsing is custom and intentionally defensive, so keep new logic compatible with quoted GTFS fields and odd formatting.
+- `scripts/processor.js` parses GTFS with the `gtfs` (node-gtfs) npm library, so GTFS parsing is delegated to a well-tested external tool. Custom parsing remains only where the pipeline adds value (audio matching, OSRM shape fallback, the routes.json index).
+- The processor imports each city's GTFS into a per-city sqlite cache (`data/{slug}/gtfs-cache.sqlite`, gitignored). It reuses the cache on later runs unless `--force` is passed.
+- Directions are grouped by GTFS `direction_id`; `direction_name` derives from the first/last stop of the representative trip (dominant shape).
+- `audio_id` is present only for `recordings` cities (Poznań) — `null` when a stop has no recording. TTS cities omit `audio_id` entirely.
 - Prefer fixing the shared processor logic once when a bug affects multiple routes or stops rather than patching individual outputs.
 - When adding new mappings or heuristics, keep them normalized and case-insensitive where appropriate.
 
 ## Validation guidance
 
-- After touching the data pipeline, rerun `npm run process` and inspect the resulting change surface.
+- After touching the data pipeline, rerun `npm run process` and inspect the resulting change surface. Use `--force` if GTFS source files changed but the sqlite cache would otherwise reuse stale imported data.
 - When adjusting GTFS shape or route logic, use the scripts in check/ as spot checks for the affected area.
 - If the output changes unexpectedly, compare the relevant GTFS rows in data/ before broadening the fix.
