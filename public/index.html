@@ -47,6 +47,7 @@
         </button>
       </div>
     </div>
+    <div class="panel-scroll">
     <div class="route-controls">
       <div class="control-group">
         <label for="route-select">Wybierz linię:</label>
@@ -124,7 +125,7 @@
         </div>
       </div>
     </div>
-
+    </div>
     <div class="ride-controls control-group" x-show="currentDirection">
       <div class="ride-btn-row">
         <button
@@ -508,6 +509,13 @@
           this.map.invalidateSize();
 
           this.map.on('zoomend', () => {
+            if (this.currentLabels.length > 0) this.optimizeLabelDirections();
+          });
+
+          // Recalculate tile layout when the window is resized (e.g. device rotation
+          // or the flex layout changing between portrait/landscape)
+          window.addEventListener('resize', () => {
+            this.map.invalidateSize();
             if (this.currentLabels.length > 0) this.optimizeLabelDirections();
           });
 
