@@ -166,8 +166,10 @@
 
   <!-- Print info box -->
   <div class="print-info-box" id="print-info-box" :class="printBoxClasses">
-    <div class="print-route-number" x-text="printRouteNumber">-</div>
-    <div class="print-route-direction" x-text="printDirectionName">-</div>
+    <div class="print-header">
+      <span class="route-badge" :class="badgeClass" :style="badgeStyle" x-text="shortName">-</span>
+      <div class="print-route-direction" x-text="printDirectionName">-</div>
+    </div>
     <div class="print-route-details">
       <span x-text="stopCount">0</span> przystanków •
       <span x-text="routeLength">0</span> km
@@ -205,7 +207,6 @@
         routeLength: '-',
         stopCount: '-',
         agencyName: '-',
-        printRouteNumber: '-',
         printDirectionName: '-',
         printDates: '-',
         printPosition: 'bottom-left',
@@ -652,7 +653,6 @@
           document.title = `Trasa ${routeTypeName.toLowerCase()} nr ${shortName}: ${directionName} — ${this.currentCityName}`;
 
           // Print info
-          this.printRouteNumber = shortName;
           this.printDirectionName = directionName;
           this.agencyName = this.currentRoute.agency_name || 'Nieznany operator';
           this.stopCount = this.currentDirection.stops.length;

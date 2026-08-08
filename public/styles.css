@@ -211,10 +211,10 @@ select,
     border-color: var(--warning);
   }
 
-  // ponytail: nested under the shared ride-btn/ride-btn-stop block; the
-  // ".ride-btn.ride-btn-stop" branch never matches (a stop button has no
-  // ride-btn class) but the ".ride-btn-stop.ride-btn-stop" branch does, so
-  // the rule works. Kept nested to avoid re-splitting the shared block.
+  /* ponytail: nested under the shared ride-btn/ride-btn-stop block; the
+     .ride-btn.ride-btn-stop branch never matches (a stop button has no
+     ride-btn class) but the .ride-btn-stop.ride-btn-stop branch does, so
+     the rule works. Kept nested to avoid re-splitting the shared block. */
   &.ride-btn-stop {
     flex: 0;
     padding: 8px 12px;
@@ -512,10 +512,10 @@ select,
     left: auto;
   }
 
-  .print-route-number {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-strong);
+  .print-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
     margin-bottom: 5px;
   }
 
