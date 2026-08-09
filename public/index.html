@@ -1175,6 +1175,20 @@
           this.ride.lineLen = lineLen;
           this.ride.stopDists = stopDists;
 
+          // Precompute bearing for each shape segment (vertex i → i+1)
+          // and cumulative distances at each vertex for fast segment lookup
+          const shapeCoordsGeo = turfLine.geometry.coordinates;
+          const segBearings = [];
+          const vertexDists = [0]; // cumulative distance at each vertex (km)
+          for (let i = 0; i < shapeCoordsGeo.length - 1; i++) {
+            const b = turf.bearing(turf.point(shapeCoordsGeo[i]), turf.point(shapeCoordsGeo[i + 1]));
+            segBearings.push(b);
+            const d = turf.distance(turf.point(shapeCoordsGeo[i]), turf.point(shapeCoordsGeo[i + 1]), { units: 'kilometers' });
+            vertexDists.push(vertexDists[i] + d);
+          }
+          this.ride.segBearings = segBearings;
+          this.ride.vertexDists = vertexDists;
+
           // Compute cruise speed based on ride speed setting
           // fast: avg 3s/stop, accel=1s → vMax = avgSegDist / 2
           // slow: avg 6s/stop, accel=2s → vMax = avgSegDist / 4
@@ -1452,15 +1466,17 @@
               const pos = [lastCoord[1], lastCoord[0]];
               this.ride.vehicleMarker.setLatLng(pos);
 
-              // Update vehicle icon direction based on bearing
-              const nearest = turf.nearestPointOnLine(turfLine, turf.point(lastCoord));
-              let prevIdx = nearest.properties.index;
-              if (prevIdx > 0 && nearest.properties.location < 0.002) {
-                prevIdx--;
+              // Update vehicle icon direction based on precomputed segment bearings
+              // Find which shape segment the current position is in using binary search
+              const vertexDists = this.ride.vertexDists;
+              const segBearings = this.ride.segBearings;
+              let lo = 0, hi = vertexDists.length - 1;
+              while (lo < hi) {
+                const mid = (lo + hi + 1) >> 1;
+                if (vertexDists[mid] <= currentDist) lo = mid; else hi = mid - 1;
               }
-              const prevVertex = turfLine.geometry.coordinates[Math.max(0, prevIdx)];
-              const bearing = turf.bearing(turf.point(prevVertex), turf.point(lastCoord));
-              const sector = this._getVehicleSector(bearing);
+              const segIdx = Math.min(lo, segBearings.length - 1);
+              const sector = this._getVehicleSector(segBearings[segIdx]);
               if (sector !== this.ride.currentSector) {
                 this._updateVehicleIcon(sector);
               }
@@ -1510,6 +1526,8 @@
           }
           this.ride.turfLine = null;
           this.ride.stopDists = null;
+          this.ride.segBearings = null;
+          this.ride.vertexDists = null;
           this.ride.vMax = 0;
           this.ride.accelTime = 1;
           this.isRiding = false;
