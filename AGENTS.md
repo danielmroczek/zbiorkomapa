@@ -35,7 +35,7 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 
 ## Project overview
 
-This repository builds an interactive visualizer for public transport routes. The app is driven by GTFS data and a small build pipeline that turns raw timetable files into browser-ready assets for the frontend in the public folder. It supports multiple cities — currently Poznań and Świnoujście.
+This repository builds an interactive visualizer for public transport routes. The app is driven by GTFS data and a small build pipeline that turns raw timetable files into browser-ready assets for the frontend in the public folder. It supports multiple cities — currently Poznań, Świnoujście, and Gorzów Wielkopolski.
 
 ## Repository layout
 
@@ -79,7 +79,8 @@ There is currently no dedicated `npm start` script in package.json. For local pr
 - The project uses ESM JavaScript in the scripts folder.
 - `scripts/processor.js` parses GTFS with the `gtfs` (node-gtfs) npm library, so GTFS parsing is delegated to a well-tested external tool. Custom parsing remains only where the pipeline adds value (audio matching, OSRM shape fallback, the routes.json index).
 - The processor imports each city's GTFS into a per-city sqlite cache (`data/{slug}/gtfs-cache.sqlite`, gitignored). It reuses the cache on later runs unless `--force` is passed.
-- Directions are grouped by GTFS `direction_id`; `direction_name` derives from the first/last stop of the representative trip (dominant shape).
+- Directions are grouped with a two-tier strategy: use GTFS `direction_id` when it meaningfully splits trips into 2+ groups (Poznań), otherwise fall back to grouping by first→last stop pair (Świnoujście, Gorzów). `direction_name` derives from the first/last stop of the representative trip (dominant shape).
+- When multiple GTFS `route_id`s share the same `route_short_name` (Gorzów pattern: one logical line split across route_ids for each direction/variant), the processor merges them into a single output route with multiple directions. Per-direction properties (color, text_color) from the original GTFS route are preserved as direction-level overrides.
 - `audio_id` is present only for `recordings` cities (Poznań) — `null` when a stop has no recording. TTS cities omit `audio_id` entirely.
 - Prefer fixing the shared processor logic once when a bug affects multiple routes or stops rather than patching individual outputs.
 - When adding new mappings or heuristics, keep them normalized and case-insensitive where appropriate.

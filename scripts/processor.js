@@ -212,10 +212,15 @@ function toUpperName(name) {
 }
 
 /**
- * Build a single direction entry: all trips of a route/direction_id share a
- * representative trip (dominant shape), whose stop list defines the route.
+ * Build a single direction entry: all trips sharing the same first→last stop
+ * pattern use a representative trip (dominant shape) whose stop list defines
+ * the route.
+ *
+ * dirOverrides: optional per-direction overrides (color, text_color) from
+ * merged GTFS route entries (Gorzów pattern: same short_name, different
+ * route_ids for each direction).
  */
-async function buildDirection(routeId, dirTrips, audioOptions) {
+async function buildDirection(routeId, dirTrips, audioOptions, dirOverrides = {}) {
   const shapeCounts = new Map();
   for (const t of dirTrips) {
     shapeCounts.set(t.shape_id, (shapeCounts.get(t.shape_id) || 0) + 1);
@@ -249,7 +254,7 @@ async function buildDirection(routeId, dirTrips, audioOptions) {
   const lastStop = stops[stops.length - 1];
   const serviceIds = [...new Set(dirTrips.map((t) => t.service_id))].sort();
 
-  return {
+  const result = {
     direction: lastStop ? lastStop.stop_name : "",
     direction_name: `${toUpperName(firstStop ? firstStop.stop_name : "")} - ${toUpperName(lastStop ? lastStop.stop_name : "")}`,
     shape_id: effectiveShapeId,
@@ -260,30 +265,98 @@ async function buildDirection(routeId, dirTrips, audioOptions) {
     trip_count: dirTrips.length,
     shape_frequency: shapeCounts.get(shapeId),
   };
+
+  // Per-direction color overrides (Gorzów: each GTFS route_id has its own
+  // color, but we merge them into one line with multiple directions).
+  if (dirOverrides.color) result.color = dirOverrides.color;
+  if (dirOverrides.text_color) result.text_color = dirOverrides.text_color;
+
+  return result;
 }
 
-/** Build the full JSON object for a single route. */
-async function buildRoute(route, agenciesByAgencyId, feedInfo, audioOptions) {
-  const trips = await getTrips({ route_id: route.route_id });
-
-  const byDirection = new Map();
+/**
+ * Group trips by direction.
+ *
+ * Strategy: use direction_id when it meaningfully splits the trips into 2+
+ * groups (Poznań sets it correctly). When all trips share the same
+ * direction_id (Świnoujście omits it, Gorzów sets it uniformly), fall back
+ * to grouping by first→last stop pair.
+ *
+ * ponytail: two-tier strategy because no single GTFS field works across all
+ * three feeds. direction_id is the canonical field but many feeds ignore it.
+ * The fallback (first→last stop) is coarser — variant trips with different
+ * short-turn terminals become separate directions — but that's acceptable
+ * because those variants ARE different routes from the rider's perspective.
+ */
+async function groupTripsByDirection(trips) {
+  // Check if direction_id meaningfully splits the trips.
+  const byDirId = new Map();
   for (const t of trips) {
     const key = t.direction_id ?? "0";
-    if (!byDirection.has(key)) byDirection.set(key, []);
-    byDirection.get(key).push(t);
+    if (!byDirId.has(key)) byDirId.set(key, []);
+    byDirId.get(key).push(t);
   }
 
-  const directions = [];
-  for (const dirTrips of byDirection.values()) {
-    directions.push(await buildDirection(route.route_id, dirTrips, audioOptions));
+  if (byDirId.size >= 2) {
+    // direction_id splits trips into 2+ groups — use it (Poznań path).
+    return byDirId;
   }
 
+  // direction_id is uniform — fall back to first→last stop (Świnoujście path).
+  const byStopPair = new Map();
+  for (const trip of trips) {
+    const stoptimes = await getStoptimes(
+      { trip_id: trip.trip_id },
+      [],
+      [["stop_sequence", "ASC"]],
+    );
+    if (stoptimes.length === 0) continue;
+
+    const firstStopId = stoptimes[0].stop_id;
+    const lastStopId = stoptimes[stoptimes.length - 1].stop_id;
+    const key = `${firstStopId}|${lastStopId}`;
+
+    if (!byStopPair.has(key)) byStopPair.set(key, []);
+    byStopPair.get(key).push(trip);
+  }
+  return byStopPair;
+}
+
+/**
+ * Build the full JSON object for a single route.
+ *
+ * mergedDirections: when GTFS splits one logical line into multiple route_ids
+ * (Gorzów pattern), the processor pre-merges them and passes the combined
+ * trips + per-direction color overrides here. Each entry is
+ * { trips, overrides: { color?, text_color? } }.
+ */
+async function buildRoute(route, agenciesByAgencyId, feedInfo, audioOptions, mergedDirections = null) {
   const agency = route.agency_id
     ? agenciesByAgencyId.get(route.agency_id)
     : undefined;
 
   const routeColor = route.route_color || "525252";
   const routeTextColor = route.route_text_color || "FFFFFF";
+
+  let directions;
+
+  if (mergedDirections) {
+    // Pre-merged directions (Gorzów: multiple route_ids → one logical line).
+    directions = [];
+    for (const { trips, overrides } of mergedDirections) {
+      // Each "direction" here is already grouped by first→last stop from the
+      // merge step, so all trips in this bucket share one direction.
+      directions.push(await buildDirection(route.route_id, trips, audioOptions, overrides));
+    }
+  } else {
+    // Normal path: group this route's trips by first→last stop.
+    const trips = await getTrips({ route_id: route.route_id });
+    const byDirection = await groupTripsByDirection(trips);
+    directions = [];
+    for (const dirTrips of byDirection.values()) {
+      directions.push(await buildDirection(route.route_id, dirTrips, audioOptions));
+    }
+  }
 
   return {
     route_id: route.route_id,
@@ -380,27 +453,73 @@ async function processCity(cityConfig, { force }) {
     const agenciesByAgencyId = new Map();
     for (const a of agencies) agenciesByAgencyId.set(a.agency_id, a);
 
-    const routeData = [];
+    // Detect duplicate short_names (Gorzów pattern: one logical line split
+    // across multiple GTFS route_ids, each representing a direction/variant).
+    // Group them so they merge into one output route with multiple directions.
+    const byShortName = new Map();
     for (const route of routes) {
-      const result = await buildRoute(
-        route,
-        agenciesByAgencyId,
-        feedInfo,
-        audioOptions,
-      );
-      const totalStops = result.directions.reduce(
-        (sum, d) => sum + d.stops.length,
-        0,
-      );
-      fs.writeFileSync(
-        path.join(outputDir, `${result.route_id}.json`),
-        JSON.stringify(result, null, 2),
-        "utf8",
-      );
-      routeData.push(result);
-      console.log(
-        `  Zapisano: ${result.route_id}.json (${result.directions.length} kierunki, ${totalStops} przystanków)`,
-      );
+      const sn = route.route_short_name;
+      if (!byShortName.has(sn)) byShortName.set(sn, []);
+      byShortName.get(sn).push(route);
+    }
+
+    const routeData = [];
+    for (const [shortName, routeGroup] of byShortName) {
+      if (routeGroup.length === 1) {
+        // Normal case: one GTFS route_id per short_name.
+        const route = routeGroup[0];
+        const result = await buildRoute(route, agenciesByAgencyId, feedInfo, audioOptions);
+        const totalStops = result.directions.reduce((sum, d) => sum + d.stops.length, 0);
+        fs.writeFileSync(
+          path.join(outputDir, `${result.route_id}.json`),
+          JSON.stringify(result, null, 2),
+          "utf8",
+        );
+        routeData.push(result);
+        console.log(
+          `  Zapisano: ${result.route_id}.json (${result.directions.length} kierunki, ${totalStops} przystanków)`,
+        );
+      } else {
+        // Gorzów pattern: multiple route_ids share the same short_name.
+        // Merge them into one logical route with multiple directions.
+        // Use the first route_id as the canonical one for the output file.
+        const canonical = routeGroup[0];
+        console.log(
+          `  Łączę ${routeGroup.length} route_ids dla linii ${shortName}: ${routeGroup.map(r => r.route_id).join(', ')}`,
+        );
+
+        // For each sub-route, load its trips and group by first→last stop,
+        // then attach per-direction color overrides from the sub-route.
+        const mergedDirections = [];
+        for (const subRoute of routeGroup) {
+          const trips = await getTrips({ route_id: subRoute.route_id });
+          const byDir = await groupTripsByDirection(trips);
+          for (const dirTrips of byDir.values()) {
+            mergedDirections.push({
+              trips: dirTrips,
+              overrides: {
+                color: subRoute.route_color || undefined,
+                text_color: subRoute.route_text_color || undefined,
+              },
+            });
+          }
+        }
+
+        const result = await buildRoute(
+          canonical, agenciesByAgencyId, feedInfo, audioOptions,
+          mergedDirections,
+        );
+        const totalStops = result.directions.reduce((sum, d) => sum + d.stops.length, 0);
+        fs.writeFileSync(
+          path.join(outputDir, `${result.route_id}.json`),
+          JSON.stringify(result, null, 2),
+          "utf8",
+        );
+        routeData.push(result);
+        console.log(
+          `  Zapisano: ${result.route_id}.json (${result.directions.length} kierunki, ${totalStops} przystanków) [połączono ${routeGroup.length} route_ids]`,
+        );
+      }
     }
 
     if (isRecordings) {

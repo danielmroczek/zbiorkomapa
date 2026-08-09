@@ -1,6 +1,6 @@
 # Zbiorkomapa
 
-Zbiorkomapa to interaktywna wizualizacja tras komunikacji miejskiej. Projekt łączy dane GTFS z mapą, umożliwiając przeglądanie linii, wyboru kierunku oraz analizę tras i przystanków. Obsługuje wiele miast — obecnie Poznań i Świnoujście.
+Zbiorkomapa to interaktywna wizualizacja tras komunikacji miejskiej. Projekt łączy dane GTFS z mapą, umożliwiając przeglądanie linii, wyboru kierunku oraz analizę tras i przystanków. Obsługuje wiele miast — obecnie Poznań, Świnoujście i Gorzów Wielkopolski.
 
 ## Demo
 
@@ -8,7 +8,7 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 
 ## Najważniejsze funkcje
 
-- obsługa wielu miast (Poznań, Świnoujście) z łatwą możliwością dodawania kolejnych
+- obsługa wielu miast (Poznań, Świnoujście, Gorzów Wielkopolski) z łatwą możliwością dodawania kolejnych
 - przeglądanie tras tramwajowych i autobusowych
 - wybór linii oraz kierunku jazdy
 - podgląd długości trasy i liczby przystanków
@@ -45,7 +45,7 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 - `public/dist/cities.json` — konfiguracja miast dla frontendu
 - `public/` — frontend oraz zasoby statyczne
 - `scripts/` — skrypty pobierające i przetwarzające dane
-  - `scripts/processor.js` — przetwarza GTFS na zasoby frontendu (oparty o bibliotekę [`gtfs`](https://github.com/BlinkTagInc/node-gtfs)); grupowanie tras wg `direction_id`
+  - `scripts/processor.js` — przetwarza GTFS na zasoby frontendu (oparty o bibliotekę [`gtfs`](https://github.com/BlinkTagInc/node-gtfs)); kierunki grupowane wg `direction_id` (Poznań) lub pierwszego→ostatniego przystanku (Świnoujście, Gorzów); linie z duplikatami `route_short_name` (Gorzów) łączone w jedną linię z wieloma kierunkami
   - `scripts/audio-matcher.js` — samodzielny moduł dopasowujący przystanki do nagrań audio (per miasto; obecnie Poznań)
   - `scripts/osrm-router.js` — samodzielny moduł wyznaczający trasy drogowe (gdy GTFS nie ma shapes)
 

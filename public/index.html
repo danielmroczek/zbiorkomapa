@@ -664,6 +664,27 @@
           this.stopCount = this.currentDirection.stops.length;
           this.routeLength = this.calcRouteLength(this.currentDirection.shape.coordinates);
 
+          // Direction-level color override (Gorzów: each direction has its own
+          // color from the original GTFS route_id). Falls back to route color.
+          const dirColor = this.currentDirection.color || this.currentRoute.color || '525252';
+          const dirTextColor = this.currentDirection.text_color || this.currentRoute.text_color || 'FFFFFF';
+          let bgColor = `#${dirColor}`;
+          let txtColor = `#${dirTextColor}`;
+          const isSpecialGray = bgColor.toUpperCase() === '#525252' && txtColor.toUpperCase() === '#FFFFFF';
+          if (isSpecialGray) {
+            bgColor = '#FFFFFF';
+            txtColor = '#000000';
+          }
+          this.badgeStyle = {
+            'background-color': bgColor,
+            'color': txtColor
+          };
+          const rgb = this.hexToRgb(bgColor);
+          if (rgb && rgb.r > 240 && rgb.g > 240 && rgb.b > 240) {
+            this.badgeClass += ' light-bg';
+            this.badgeStyle['border-color'] = txtColor;
+          }
+
           const feedInfo = this.currentRoute.feed_info || {};
           const startDate = (feedInfo.feed_start_date || '').replace(/"/g, '');
           const endDate = (feedInfo.feed_end_date || '').replace(/"/g, '');
