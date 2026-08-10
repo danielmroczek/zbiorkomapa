@@ -87,6 +87,15 @@ export function createRideMixin() {
           const nearest = turf.nearestPointOnLine(turfLine, pt);
           let dist = nearest.properties.location;
 
+          // For loop routes: the first stop may snap to the end of the line
+          // (geographically close to the start). Restrict the first stop to
+          // the first half of the line so the ride begins at the actual start.
+          if (i === 0 && dist > lineLen / 2) {
+            const firstHalf = turf.lineSliceAlong(turfLine, 0, lineLen / 2);
+            const nearestFirstHalf = turf.nearestPointOnLine(firstHalf, pt);
+            dist = nearestFirstHalf.properties.location;
+          }
+
           if (dist < searchStartDist && i > 0) {
             const remainingLine = turf.lineSliceAlong(turfLine, searchStartDist, lineLen);
             const nearestFwd = turf.nearestPointOnLine(remainingLine, pt);
