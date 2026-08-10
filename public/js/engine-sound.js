@@ -395,3 +395,5 @@ function createEngineSound() {
     }
   };
 }
+
+export { createEngineSound };
