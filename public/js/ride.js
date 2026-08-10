@@ -1,3 +1,9 @@
+// Leaflet + Turf as ESM namespaces (esm.sh wraps otherwise-UMD builds).
+// `esm.sh` re-exports the named exports, so `L.xxx` / `turf.xxx` keep working
+// exactly as before the CDN <script> tags were removed.
+import * as L from 'https://esm.sh/leaflet@1.9.4';
+import * as turf from 'https://esm.sh/@turf/turf@7';
+
 // Ride (auto-play) mixin — start/stop/pause/resume, animation, vehicle icon
 
 export function createRideMixin() {
