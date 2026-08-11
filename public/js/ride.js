@@ -3,6 +3,12 @@
 // exactly as before the CDN <script> tags were removed.
 import * as L from 'https://esm.sh/leaflet@1.9.4';
 import * as turf from 'https://esm.sh/@turf/turf@7';
+import {
+  segmentSpeedAt,
+  vehicleSector,
+  snapStops,
+  MIN_TRAIL_SLICE
+} from './ride-math.js';
 
 // Ride (auto-play) mixin — start/stop/pause/resume, animation, vehicle icon
 
@@ -83,33 +89,11 @@ export function createRideMixin() {
         const stops = this.currentDirection.stops;
         const shapeCoords = this.currentDirection.shape.coordinates;
 
+        // Pure ride mechanics: snap stops onto the shape line and get each
+        // stop's distance from the line start. The [lng,lat]↔[lat,lng] swap
+        // for Turf lives inside ride-math, so this caller never touches it.
+        const { stopDists, lineLen } = snapStops(shapeCoords, stops, turf);
         const turfLine = turf.lineString(shapeCoords.map(c => [c[1], c[0]]));
-        const lineLen = turf.length(turfLine, { units: 'kilometers' });
-
-        const stopDists = [];
-        let searchStartDist = 0;
-        for (let i = 0; i < stops.length; i++) {
-          const pt = turf.point([stops[i].stop_lon, stops[i].stop_lat]);
-          const nearest = turf.nearestPointOnLine(turfLine, pt);
-          let dist = nearest.properties.location;
-
-          // For loop routes: the first stop may snap to the end of the line
-          // (geographically close to the start). Restrict the first stop to
-          // the first half of the line so the ride begins at the actual start.
-          if (i === 0 && dist > lineLen / 2) {
-            const firstHalf = turf.lineSliceAlong(turfLine, 0, lineLen / 2);
-            const nearestFirstHalf = turf.nearestPointOnLine(firstHalf, pt);
-            dist = nearestFirstHalf.properties.location;
-          }
-
-          if (dist < searchStartDist && i > 0) {
-            const remainingLine = turf.lineSliceAlong(turfLine, searchStartDist, lineLen);
-            const nearestFwd = turf.nearestPointOnLine(remainingLine, pt);
-            dist = searchStartDist + nearestFwd.properties.location;
-          }
-          searchStartDist = dist;
-          stopDists.push(dist);
-        }
 
         this.ride.turfLine = turfLine;
         this.ride.lineLen = lineLen;
@@ -173,10 +157,7 @@ export function createRideMixin() {
     },
 
     _getVehicleSector(bearing) {
-      const b = ((bearing % 360) + 540) % 360 - 180;
-      if (b >= 135 || b < -135) return 'oncoming';
-      if (b >= 0) return 'right';
-      return 'left';
+      return vehicleSector(bearing);
     },
 
     _updateVehicleIcon(sector) {
@@ -286,40 +267,8 @@ export function createRideMixin() {
         }
         const durationMs = duration * 1000;
 
-        const progressAndSpeed = (t) => {
-          const elapsed = t * duration;
-          let pos, speed;
-          if (segLen >= accelDist) {
-            const cruiseTime = duration - 2 * accelTime;
-            if (elapsed < accelTime) {
-              const f = elapsed / accelTime;
-              pos = 0.5 * accelDist * f * f;
-              speed = f;
-            } else if (elapsed < accelTime + cruiseTime) {
-              pos = 0.5 * accelDist + vMax * (elapsed - accelTime);
-              speed = 1;
-            } else {
-              const dt = duration - elapsed;
-              const f = dt / accelTime;
-              pos = segLen - 0.5 * accelDist * f * f;
-              speed = f;
-            }
-          } else {
-            const t1 = accelTime * Math.sqrt(segLen / accelDist);
-            const vPeak = vMax * (t1 / accelTime);
-            if (elapsed < t1) {
-              const f = elapsed / t1;
-              pos = 0.5 * segLen * f * f;
-              speed = f;
-            } else {
-              const dt = 2 * t1 - elapsed;
-              const f = dt / t1;
-              pos = segLen - 0.5 * segLen * f * f;
-              speed = f;
-            }
-          }
-          return { frac: pos / segLen, speed: Math.max(0, Math.min(1, speed)) };
-        };
+        const progressAndSpeed = (t) =>
+          segmentSpeedAt({ segLen, vMax, accelTime }, t);
 
         const startTime = performance.now() - resumeT * durationMs;
 
@@ -345,7 +294,7 @@ export function createRideMixin() {
 
           const currentDist = startDist + frac * segLen;
 
-          const sliceEnd = Math.max(currentDist, startDist + 0.0001);
+          const sliceEnd = Math.max(currentDist, startDist + MIN_TRAIL_SLICE);
           const trailSlice = turf.lineSliceAlong(turfLine, 0, sliceEnd);
           const trailLatLngs = trailSlice.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
           this.ride.trailLine.setLatLngs(trailLatLngs);

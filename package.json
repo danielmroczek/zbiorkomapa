@@ -19,7 +19,9 @@
     "download:audio": "node scripts/downloadAudioMappings.js",
     "check:audio-links": "node scripts/checkAudioLinks.js",
     "analyze:audio": "node scripts/analyzeAudioDescriptions.js",
-    "build": "npm run download && npm run download:audio && npm run process"
+    "build": "npm run download && npm run download:audio && npm run process",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "bluebird": "^3.5.6",
@@ -28,5 +30,8 @@
   },
   "overrides": {
     "better-sqlite3": "12.4.1"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
   }
 }
