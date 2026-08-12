@@ -177,14 +177,6 @@ export function createMapOpsMixin() {
       }).setContent(content);
     },
 
-    calcRouteLength(coordinates) {
-      let totalDistance = 0;
-      for (let i = 1; i < coordinates.length; i++) {
-        totalDistance += L.latLng(coordinates[i - 1]).distanceTo(L.latLng(coordinates[i]));
-      }
-      return (totalDistance / 1000).toFixed(2);
-    },
-
     // Label overlap optimization
     getLabelPixelBounds(stopLat, stopLng, direction, text) {
       const point = this.map.latLngToContainerPoint([stopLat, stopLng]);

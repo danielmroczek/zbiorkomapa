@@ -1,5 +1,8 @@
 // City & route mixin — load, select, hash routing, direction change
 
+import * as turf from 'https://esm.sh/@turf/turf@7';
+import { routeLengthKm } from './ride-math.js';
+
 export function createCityRouteMixin() {
   return {
     // City data
@@ -198,7 +201,7 @@ export function createCityRouteMixin() {
       this.printDirectionName = directionName;
       this.agencyName = this.currentRoute.agency_name || 'Nieznany operator';
       this.stopCount = this.currentDirection.stops.length;
-      this.routeLength = this.calcRouteLength(this.currentDirection.shape.coordinates);
+      this.routeLength = routeLengthKm(this.currentDirection.shape.coordinates, turf);
 
       const feedInfo = this.currentRoute.feed_info || {};
       const startDate = (feedInfo.feed_start_date || '').replace(/"/g, '');

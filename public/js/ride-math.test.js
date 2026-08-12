@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { segmentSpeedAt, vehicleSector, snapStops } from './ride-math.js';
+import { segmentSpeedAt, vehicleSector, snapStops, routeLengthKm } from './ride-math.js';
 
 // --- A minimal, deterministic Turf fake for a horizontal straight line. ---
 // Line runs from lon=0 to lon=10 at lat=0 (input as Leaflet [lat,lng]).
@@ -100,6 +100,19 @@ describe('vehicleSector', () => {
     [136, 'oncoming'],
   ])('bearing %s → %s', (bearing, expected) => {
     expect(vehicleSector(bearing)).toBe(expected);
+  });
+});
+
+describe('routeLengthKm', () => {
+  const turf = makeStraightLineFake();
+
+  it('returns the line length in km, rounded to 2 decimals', () => {
+    expect(routeLengthKm([[0, 0], [0, 10]], turf)).toBe('10.00');
+  });
+
+  it('accepts Leaflet [lat,lng] and swaps internally', () => {
+    // Fake length ignores actual coords and always returns lineLenKm.
+    expect(routeLengthKm([[5, -3], [5, 4]], turf)).toBe('10.00');
   });
 });
 

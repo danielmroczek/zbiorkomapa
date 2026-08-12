@@ -77,6 +77,20 @@ export function vehicleSector(bearing) {
 }
 
 /**
+ * Length of a shape line in kilometers.
+ * The shape is given as Leaflet `[lat, lng]`; the Turf swap happens here.
+ *
+ * @param {Array<[number,number]>} coords Leaflet [lat,lng] vertices.
+ * @param {object} turf An injected geometry adapter exposing:
+ *   lineString, length.
+ * @returns {string} length in km, rounded to 2 decimals (display-ready).
+ */
+export function routeLengthKm(coords, turf) {
+  const turfLine = turf.lineString(coords.map((c) => [c[1], c[0]]));
+  return turf.length(turfLine, { units: 'kilometers' }).toFixed(2);
+}
+
+/**
  * Snap each stop onto the shape line and return its distance (km) from the
  * start of the line, walking forward so loop routes don't snap backwards.
  *

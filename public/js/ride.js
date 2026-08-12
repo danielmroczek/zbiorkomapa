@@ -127,7 +127,15 @@ export function createRideMixin() {
         const viewRadiusKm = avgStopDist * 2;
         const mapHeightPx = this.map.getSize().y;
         const metersPerPixel = (viewRadiusKm * 1000) / (mapHeightPx / 2);
-        const targetZoom = Math.log2(40075016 / (256 * metersPerPixel));
+        // Web-Mercator zoom: metersPerPixel = circumference / (256 * 2^zoom).
+        // We use Turf's mean-Earth circumference (2·π·earthRadius), which is
+        // ~40030174 m — deliberately NOT the WGS84 equatorial 40075016 m. The
+        // difference is <0.2%, far below Leaflet's zoomSnap (0.1), so the
+        // resulting zoom is unchanged in practice. Prefer this to a magic
+        // number; if exact Mercator precision ever matters, restore the
+        // equatorial circumference 40075016 (2·π·6378137).
+        const earthCircumferenceM = 2 * Math.PI * turf.earthRadius;
+        const targetZoom = Math.log2(earthCircumferenceM / (256 * metersPerPixel));
         const clampedZoom = Math.min(Math.max(targetZoom, this.map.getMinZoom()), this.map.getMaxZoom());
         this.map.setView(startCoord, clampedZoom, { animate: true });
 
