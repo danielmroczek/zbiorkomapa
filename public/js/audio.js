@@ -79,6 +79,9 @@ export function createAudioMixin() {
 
       if (audioSource === 'tts') {
         return this._playStopAudioTTS(stop, isLastStop, isFirstStop);
+      } else if (stop?.audio_id == null) {
+        // Recording city but stop has no recording: TTS for name, recordings for static messages
+        return this._playStopAudioHybrid(stop, isLastStop, isFirstStop);
       } else {
         if (this.audioPlayer) {
           return this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop, stop);
@@ -102,6 +105,31 @@ export function createAudioMixin() {
 
       if (isLastStop) {
         await this.ttsSpeak('Koniec trasy');
+      }
+    },
+
+    // TTS for stop name, recordings for static messages (on-demand, last stop, first stop chime)
+    async _playStopAudioHybrid(stop, isLastStop = false, isFirstStop = false) {
+      const isOnDemand = Boolean(stop?.is_on_demand);
+      const baseUrl = this.currentCityConfig?.audioBaseUrl;
+      const playRecording = async (fileName) => {
+        if (!baseUrl || !this.audioPlayer) return;
+        const url = `${baseUrl}${encodeURIComponent(fileName)}`;
+        await this.audioPlayer.play(url, false, false, null);
+      };
+
+      if (isFirstStop) {
+        await playRecording('KBING!.mp3');
+      }
+
+      await this.ttsSpeak((stop?.stop_name || '').replace(/"/g, '').trim());
+
+      if (isOnDemand) {
+        await playRecording('KZADAN.mp3');
+      }
+
+      if (isLastStop) {
+        await playRecording('KONCTR.mp3');
       }
     },
 
