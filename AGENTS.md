@@ -85,6 +85,16 @@ There is currently no dedicated `npm start` script in package.json. For local pr
 - Prefer fixing the shared processor logic once when a bug affects multiple routes or stops rather than patching individual outputs.
 - When adding new mappings or heuristics, keep them normalized and case-insensitive where appropriate.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
 ## Validation guidance
 
 - After touching the data pipeline, rerun `npm run process` and inspect the resulting change surface. Use `--force` if GTFS source files changed but the sqlite cache would otherwise reuse stale imported data.
