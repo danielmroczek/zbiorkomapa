@@ -6,7 +6,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Zbiorkomapa — trasy komunikacji miejskiej</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <!-- leaflet version pinned in import map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "leaflet": "https://esm.sh/leaflet@1.9.4",
+      "@turf/turf": "https://esm.sh/@turf/turf@7",
+      "alpinejs": "https://esm.sh/alpinejs@3.15.12"
+    }
+  }
+  </script>
   <script type="module" src="js/app.js"></script>
   <link rel="stylesheet" href="styles.css">
 </head>

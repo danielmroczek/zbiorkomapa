@@ -1,6 +1,6 @@
 // City & route mixin — load, select, hash routing, direction change
 
-import * as turf from 'https://esm.sh/@turf/turf@7';
+import * as turf from '@turf/turf';
 import { routeLengthKm } from './ride-math.js';
 
 export function createCityRouteMixin() {

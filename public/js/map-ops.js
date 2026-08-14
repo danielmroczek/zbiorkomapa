@@ -1,7 +1,4 @@
-// Leaflet as ESM namespace (esm.sh wraps the official ESM build).
-// `esm.sh` re-exports Leaflet's named exports (`map`, `marker`, `polyline`, ...)
-// so `L.xxx` keeps working exactly as before the CDN <script> was removed.
-import * as L from 'https://esm.sh/leaflet@1.9.4';
+import * as L from 'leaflet';
 
 // Map operations + label optimization mixin
 

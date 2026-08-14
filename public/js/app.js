@@ -1,6 +1,6 @@
 // App composer — imports mixins, merges into Alpine component, display state, init()
 
-import Alpine from 'https://esm.sh/alpinejs@3.15.12';
+import Alpine from 'alpinejs';
 import { createRideMixin } from './ride.js';
 import { createMapOpsMixin } from './map-ops.js';
 import { createAudioMixin } from './audio.js';
