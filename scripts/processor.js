@@ -232,12 +232,14 @@ async function processCity(cityConfig) {
     const feedInfo = parseCSV(feedInfoText);
     console.log(`  feed_info.txt: ${feedInfo.length} rekordów`);
 
-    const calendarText = fs.readFileSync(path.join(dataDir, 'calendar.txt'), 'utf8');
-    const calendar = parseCSV(calendarText);
+    const calendarText = fs.existsSync(path.join(dataDir, 'calendar.txt'))
+      ? fs.readFileSync(path.join(dataDir, 'calendar.txt'), 'utf8') : '';
+    const calendar = calendarText ? parseCSV(calendarText) : [];
     console.log(`  calendar.txt: ${calendar.length} rekordów`);
 
-    const calendarDatesText = fs.readFileSync(path.join(dataDir, 'calendar_dates.txt'), 'utf8');
-    const calendarDates = parseCSV(calendarDatesText);
+    const calendarDatesText = fs.existsSync(path.join(dataDir, 'calendar_dates.txt'))
+      ? fs.readFileSync(path.join(dataDir, 'calendar_dates.txt'), 'utf8') : '';
+    const calendarDates = calendarDatesText ? parseCSV(calendarDatesText) : [];
     console.log(`  calendar_dates.txt: ${calendarDates.length} rekordów`);
 
     const agencyText = fs.existsSync(path.join(dataDir, 'agency.txt')) 
@@ -368,46 +370,66 @@ async function processCity(cityConfig) {
       // Parse route_desc to get ordered stops for each direction
       const routeDescDirections = parseRouteDescStops(routeInfo.route_desc);
       
-      // Group trips by direction, but only include directions that are in the official route_long_name
+      // Group trips by direction.
+      // When trip_headsign is present (Poznań), group by headsign and filter
+      // against route_long_name. When headsign is empty (Gorzów), group by
+      // direction_id and use route_long_name as the direction name.
+      const hasHeadsign = routeTrips.some(t => t.trip_headsign && t.trip_headsign.trim());
       const directions = new Map();
       const onDemandStatsByStopId = new Map();
-      for (const trip of routeTrips) {
-        const directionName = extractDirectionName(trip.trip_headsign);
-        
-        // Only include this direction if it matches one of the official direction names
-        // Check if the extracted direction name appears in the official direction pattern
-        const isOfficialDirection = directionNames.some(officialName => {
-          const officialClean = officialName.replace(/\^[^|]*/g, '').trim();
-          const officialLower = normalizeLookupValue(officialClean);
-          const directionLower = normalizeLookupValue(directionName);
-          
-          // For patterns like "A - B", check if this is the origin (A) or destination (B)
-          if (officialClean.includes(' - ')) {
-            const parts = officialClean.split(' - ').map(p => normalizeLookupValue(p));
-            const origin = parts[0];
-            const destination = parts[parts.length - 1];
-            
-            // Check if direction matches origin OR destination
-            return origin === directionLower || 
-                   destination === directionLower ||
-                   officialLower.includes(directionLower) ||
-                   directionLower.includes(origin) ||
-                   directionLower.includes(destination);
-          }
-          // For simple patterns, check exact match or containment
-          return officialLower === directionLower || 
-                 officialLower.includes(directionLower) ||
-                 directionLower.includes(officialLower);
-        });
-        
-        if (isOfficialDirection) {
-          if (!directions.has(directionName)) {
-            directions.set(directionName, []);
-          }
-          directions.get(directionName).push(trip);
 
-          // Aggregate stop demand stats once per route using the same trip/stop_times data.
-          // This keeps the implementation efficient and follows the GTFS rule of using a 50% threshold.
+      if (hasHeadsign) {
+        // Poznań path: group by headsign, filter against official direction names
+        for (const trip of routeTrips) {
+          const directionName = extractDirectionName(trip.trip_headsign);
+
+          const isOfficialDirection = directionNames.some(officialName => {
+            const officialClean = officialName.replace(/\^[^|]*/g, '').trim();
+            const officialLower = normalizeLookupValue(officialClean);
+            const directionLower = normalizeLookupValue(directionName);
+
+            if (officialClean.includes(' - ')) {
+              const parts = officialClean.split(' - ').map(p => normalizeLookupValue(p));
+              const origin = parts[0];
+              const destination = parts[parts.length - 1];
+              return origin === directionLower ||
+                     destination === directionLower ||
+                     officialLower.includes(directionLower) ||
+                     directionLower.includes(origin) ||
+                     directionLower.includes(destination);
+            }
+            return officialLower === directionLower ||
+                   officialLower.includes(directionLower) ||
+                   directionLower.includes(officialLower);
+          });
+
+          if (isOfficialDirection) {
+            if (!directions.has(directionName)) {
+              directions.set(directionName, []);
+            }
+            directions.get(directionName).push(trip);
+
+            const tripStopTimes = stopTimesByTrip.get(trip.trip_id) || [];
+            for (const stopTime of tripStopTimes) {
+              const stopId = stopTime.stop_id;
+              const currentStats = onDemandStatsByStopId.get(stopId) || { total: 0, onDemand: 0 };
+              currentStats.total += 1;
+              if (isOnDemandStopTime(stopTime)) {
+                currentStats.onDemand += 1;
+              }
+              onDemandStatsByStopId.set(stopId, currentStats);
+            }
+          }
+        }
+      } else {
+        // Gorzów path: no headsign — group by direction_id, use route_long_name
+        for (const trip of routeTrips) {
+          const dirKey = trip.direction_id || '0';
+          if (!directions.has(dirKey)) {
+            directions.set(dirKey, []);
+          }
+          directions.get(dirKey).push(trip);
+
           const tripStopTimes = stopTimesByTrip.get(trip.trip_id) || [];
           for (const stopTime of tripStopTimes) {
             const stopId = stopTime.stop_id;
@@ -602,13 +624,17 @@ async function processCity(cityConfig) {
           continue;
         }
 
-        // Get direction name by matching destination with direction key
-        // Try to find matching direction_name from the map
+        // Resolve direction_name: try map lookup, then fallback chain
         let directionName = directionNameMap.get(normalizeLookupValue(direction));
-        
-        // Fallback to first available direction_name or trip_headsign
+
         if (!directionName) {
-          directionName = directionNames[directionIndex] || dirTrips[0]?.trip_headsign || direction;
+          // For no-headsign feeds (Gorzów), direction is a direction_id like '0'/'1'.
+          // Use route_long_name as the direction name (e.g. "A - B").
+          if (!hasHeadsign && directionNames.length > 0) {
+            directionName = directionNames[directionIndex] || directionNames[0];
+          } else {
+            directionName = directionNames[directionIndex] || dirTrips[0]?.trip_headsign || direction;
+          }
         }
 
         // Calculate bounds more efficiently
@@ -621,7 +647,7 @@ async function processCity(cityConfig) {
         }
 
         directionsData.push({
-          direction: direction,
+          direction: routeStops.length > 0 ? routeStops[routeStops.length - 1].stop_name : direction,
           direction_name: directionName,
           shape_id: shapeId,
           shape: {
