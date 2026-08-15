@@ -183,7 +183,7 @@ function parseRouteDescStops(routeDesc) {
 async function processCity(cityConfig) {
   const slug = slugify(cityConfig.name);
   const dataDir = path.join(projectRoot, 'data', slug);
-  const outputDir = path.join(projectRoot, 'public', 'dist');
+  const outputDir = path.join(projectRoot, 'public', 'dist', slug);
 
   console.log(`\n=== Przetwarzam: ${cityConfig.name} (${slug}) ===`);
 
@@ -732,6 +732,28 @@ async function main() {
   for (const city of cities) {
     await processCity(city);
   }
+
+  // Write frontend cities.json in dist root
+  const distDir = path.join(projectRoot, 'public', 'dist');
+  if (!fs.existsSync(distDir)) {
+    fs.mkdirSync(distDir, { recursive: true });
+  }
+  const frontendCities = config.cities.map(c => {
+    const entry = {
+      name: c.name,
+      slug: slugify(c.name),
+      audioSource: c.audioSource || 'tts',
+      ttsLang: c.ttsLang || 'pl-PL',
+    };
+    if (c.audioBaseUrl) entry.audioBaseUrl = c.audioBaseUrl;
+    return entry;
+  });
+  fs.writeFileSync(
+    path.join(distDir, 'cities.json'),
+    JSON.stringify(frontendCities, null, 2),
+    'utf8',
+  );
+  console.log(`\nZapisano konfigurację miast: ${distDir}/cities.json`);
 }
 
 main();
