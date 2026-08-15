@@ -144,32 +144,6 @@ function createPoznanMatcher(audioLookup) {
       return { audio_id: audioLookup.get(poznanKey), strategy: "poznanPrefix" };
     }
 
-    // Strategy 6: partial match, only when the candidate is a strong fit.
-    // ponytail: O(n) scan of the whole lookup per unmatched stop — fine for
-    // ~thousands of entries but not for a large feed. Upgrade path: build a
-    // per-token inverted index over the lookup keys once, then query it here.
-    for (const [key, value] of audioLookup) {
-      const audioName = key.includes("|") ? key.split("|")[1] : key;
-      if (
-        audioName === stopName ||
-        audioName.includes(stopName) ||
-        stopName.includes(audioName)
-      ) {
-        const isGeneric =
-          stopName.includes("/") &&
-          (audioName.length <= 3 ||
-            audioName === "serbska" ||
-            audioName === "wilczak");
-        if (
-          !isGeneric &&
-          stopName.length > 3 &&
-          audioName.length > 3
-        ) {
-          return { audio_id: value, strategy: "partialMatch" };
-        }
-      }
-    }
-
     return null;
   };
 
@@ -210,3 +184,5 @@ export function createAudioMatcher({ slug, dataDir, audioSource }) {
   // for it in this function when recordings audio for the city is wired up.
   return createNoopMatcher();
 }
+
+export { createPoznanMatcher };
