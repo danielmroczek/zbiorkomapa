@@ -596,7 +596,7 @@ async function processCity(cityConfig) {
                   audioMatchingStats.strategies[match.strategy]++;
                 }
               } else {
-                audioId = 'KBING!';
+                audioId = null;
                 audioMatchingStats.unmatchedStops++;
               }
 

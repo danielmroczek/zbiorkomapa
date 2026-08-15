@@ -206,7 +206,7 @@ export function createAudioMatcher({ slug, dataDir, audioSource }) {
 
   // Unknown recordings city with no per-city strategy yet.
   // ponytail: any city with audioSource "recordings" but no strategy here
-  // silently matches nothing (all stops become KBING!). Add a strategy object
+  // silently matches nothing (all stops get null audio_id). Add a strategy object
   // for it in this function when recordings audio for the city is wired up.
   return createNoopMatcher();
 }
