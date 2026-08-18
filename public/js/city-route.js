@@ -137,9 +137,16 @@ export function createCityRouteMixin() {
         const response = await fetch(`./dist/${this.currentCitySlug}/${this.selectedRouteId}.json`);
         const routeData = await response.json();
         this.currentRoute = routeData;
-        this.directions = routeData.directions.map(d => ({
+        const dirs = routeData.directions;
+        const lastStopCounts = new Map();
+        for (const d of dirs) {
+          lastStopCounts.set(d.last_stop, (lastStopCounts.get(d.last_stop) || 0) + 1);
+        }
+        this.directions = dirs.map(d => ({
           ...d,
-          directionLabel: `${d.first_stop.toUpperCase()} → ${d.last_stop.toUpperCase()}`,
+          directionLabel: lastStopCounts.get(d.last_stop) > 1
+            ? `${d.first_stop.toUpperCase()} → ${d.last_stop.toUpperCase()}`
+            : `→ ${d.last_stop.toUpperCase()}`,
         }));
 
         const shortName = routeMeta.short_name;
