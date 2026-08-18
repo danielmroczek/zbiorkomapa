@@ -90,7 +90,7 @@ export function createAudioMixin() {
     },
 
     async _playStopAudioTTS(stop, isLastStop = false, isFirstStop = false) {
-      const stopName = (stop?.stop_name || '').replace(/"/g, '').trim();
+      const stopName = stop?.stop_name || '';
       const isOnDemand = Boolean(stop?.is_on_demand);
 
       if (isFirstStop) {
@@ -122,7 +122,7 @@ export function createAudioMixin() {
         await playRecording('KBING!.mp3');
       }
 
-      await this.ttsSpeak((stop?.stop_name || '').replace(/"/g, '').trim());
+await this.ttsSpeak(stop?.stop_name || '');
 
       if (isOnDemand) {
         await playRecording('KZADAN.mp3');

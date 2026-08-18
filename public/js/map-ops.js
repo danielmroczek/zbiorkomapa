@@ -101,7 +101,7 @@ export function createMapOpsMixin() {
       directionData.stops.forEach((stop, index) => {
         const stopLat = stop.stop_lat || stop.lat;
         const stopLng = stop.stop_lon || stop.lng;
-        const stopNameClean = (stop.stop_name || stop.name || '').replace(/"/g, '').trim();
+        const stopNameClean = stop.stop_name || stop.name || '';
         const isFirstStop = index === 0;
         const isLastStop = index === totalStops - 1;
         const zoneLetter = this.getStopZoneLetter(stop);

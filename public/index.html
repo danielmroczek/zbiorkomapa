@@ -62,7 +62,7 @@
           <option value="" disabled x-show="routes.length === 0">Ładowanie...</option>
           <template x-for="route in routes" :key="route.route_id">
             <option :value="route.route_id"
-              x-text="route.short_name.replace(/&quot;/g, '').trim() + ' (' + (route.type === 'TRAM' ? 'Tramwaj' : 'Autobus') + ')'">
+              x-text="route.displayName">
             </option>
           </template>
         </select>
@@ -73,7 +73,7 @@
           @change="onDirectionChange()">
           <option value="" disabled x-show="!currentRoute">Wybierz linię</option>
           <template x-for="(dir, idx) in directions" :key="idx">
-            <option :value="idx" x-text="dir.direction_name.replace(/&quot;/g, '').trim()"></option>
+            <option :value="idx" x-text="dir.direction_name"></option>
           </template>
         </select>
       </div>
@@ -139,7 +139,7 @@
           class="ride-btn"
           :class="{ active: isRiding && !isPaused }"
           @click="togglePlayPause()" :disabled="!currentDirection">
-          <span x-text="isRiding && !isPaused ? '⏸ Pauza' : '▶ Przejazd'"></span>
+          <span x-text="playPauseLabel"></span>
         </button>
         <button class="ride-btn-stop" @click="stopRide()" x-show="isRiding || isPaused">
           ⏹

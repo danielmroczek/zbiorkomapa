@@ -161,7 +161,7 @@ async function buildStops(tripId, audioOptions) {
 
     const stop = {
       stop_id: stopId,
-      stop_name: row.stop_name?.trim?.() ?? row.stop_name,
+      stop_name: sanitize(row.stop_name),
       stop_lat: roundCoord(row.stop_lat),
       stop_lon: roundCoord(row.stop_lon),
       stop_code: row.stop_code,
@@ -206,9 +206,14 @@ async function buildShape(shapeId) {
   };
 }
 
+/** Strip GTFS-encoded quotes and trim whitespace. */
+function sanitize(str) {
+  return String(str ?? "").replace(/&quot;/g, '"').replace(/"/g, '').trim();
+}
+
 /** Uppercase a stop name for use in `direction_name`. */
 function toUpperName(name) {
-  return name ? String(name).toUpperCase() : "";
+  return name ? sanitize(name).toUpperCase() : "";
 }
 
 /**
@@ -369,15 +374,15 @@ async function buildRoute(route, agenciesByAgencyId, feedInfo, audioOptions, mer
 
   return {
     route_id: route.route_id,
-    short_name: route.route_short_name,
+    short_name: sanitize(route.route_short_name),
     color: routeColor,
     text_color: routeTextColor,
     type: getRouteTypeString(route.route_type),
-    agency_name: agency ? agency.agency_name : "",
+    agency_name: agency ? sanitize(agency.agency_name) : "",
     feed_info: feedInfo
       ? {
-          feed_start_date: String(feedInfo.feed_start_date),
-          feed_end_date: String(feedInfo.feed_end_date),
+          feed_start_date: sanitize(feedInfo.feed_start_date),
+          feed_end_date: sanitize(feedInfo.feed_end_date),
           feed_publisher_name: feedInfo.feed_publisher_name,
           feed_publisher_url: feedInfo.feed_publisher_url,
         }

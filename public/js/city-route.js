@@ -90,13 +90,13 @@ export function createCityRouteMixin() {
       try {
         const response = await fetch(`./dist/${this.currentCitySlug}/routes.json`);
         const data = await response.json();
-        if (Array.isArray(data)) {
-          this.routes = data;
-        } else {
-          this.routes = data.routes || [];
-          if (data.map_center) {
-            this.map.setView(data.map_center, 13);
-          }
+        const routeList = Array.isArray(data) ? data : (data.routes || []);
+        this.routes = routeList.map(r => ({
+          ...r,
+          displayName: `${r.short_name} (${r.type === 'TRAM' ? 'Tramwaj' : 'Autobus'})`,
+        }));
+        if (!Array.isArray(data) && data.map_center) {
+          this.map.setView(data.map_center, 13);
         }
       } catch (error) {
         console.error('Błąd ładowania indeksu linii:', error);
@@ -139,7 +139,7 @@ export function createCityRouteMixin() {
         this.currentRoute = routeData;
         this.directions = routeData.directions;
 
-        const shortName = routeMeta.short_name.replace(/"/g, '').trim();
+        const shortName = routeMeta.short_name;
         const routeTypeName = routeMeta.type === 'TRAM' ? 'Tramwaj' : 'Autobus';
         const routeTypeEmoji = routeMeta.type === 'TRAM' ? '🚋' : '🚌';
         this.shortName = shortName;
@@ -189,12 +189,12 @@ export function createCityRouteMixin() {
       localStorage.setItem(`lastDirection_${this.selectedRouteId}`, this.selectedDirectionIdx);
 
       const stops = this.currentDirection.stops;
-      const firstStop = stops.length > 0 ? (stops[0].stop_name || '').replace(/"/g, '').trim() : '?';
-      const lastStop = stops.length > 0 ? (stops[stops.length - 1].stop_name || '').replace(/"/g, '').trim() : '?';
+      const firstStop = stops.length > 0 ? (stops[0].stop_name || '?') : '?';
+      const lastStop = stops.length > 0 ? (stops[stops.length - 1].stop_name || '?') : '?';
       this.routeName = `${firstStop} → ${lastStop}`;
 
-      const directionName = this.currentDirection.direction_name.replace(/"/g, '').trim();
-      const shortName = this.currentRoute.short_name.replace(/"/g, '').trim();
+      const directionName = this.currentDirection.direction_name;
+      const shortName = this.currentRoute.short_name;
       const routeTypeName = this.currentRoute.type === 'TRAM' ? 'Tramwaju' : 'Autobusu';
       document.title = `Trasa ${routeTypeName.toLowerCase()} nr ${shortName}: ${directionName} — ${this.currentCityName}`;
 
@@ -204,8 +204,8 @@ export function createCityRouteMixin() {
       this.routeLength = routeLengthKm(this.currentDirection.shape.coordinates, turf);
 
       const feedInfo = this.currentRoute.feed_info || {};
-      const startDate = (feedInfo.feed_start_date || '').replace(/"/g, '');
-      const endDate = (feedInfo.feed_end_date || '').replace(/"/g, '');
+      const startDate = feedInfo.feed_start_date || '';
+      const endDate = feedInfo.feed_end_date || '';
       if (startDate && endDate) {
         const fmt = d => `${d.substring(6)}.${d.substring(4, 6)}.${d.substring(0, 4)}`;
         this.printDates = `Obowiązuje: ${fmt(startDate)}–${fmt(endDate)}`;

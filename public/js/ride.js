@@ -14,6 +14,11 @@ export function createRideMixin() {
     // Ride state
     isRiding: false,
     isPaused: false,
+
+    get playPauseLabel() {
+      return this.isRiding && !this.isPaused ? '⏸ Pauza' : '▶ Przejazd';
+    },
+
     ride: {
       token: 0,
       vehicleMarker: null,
