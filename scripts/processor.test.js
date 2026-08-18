@@ -134,7 +134,7 @@ describe("Poznań/701 — no extended-course stops (representative trip)", () =>
   it("each direction ends at its declared terminus", () => {
     for (const d of r.directions) {
       const last = d.stops[d.stops.length - 1].stop_name;
-      const nameTail = d.direction_name.trim().split(" - ").pop().toLowerCase();
+      const nameTail = d.last_stop.toLowerCase();
       if (nameTail.includes("jeziorna")) {
         expect(last).toBe("Komorniki/Jeziorna");
       } else if (nameTail.includes("górczyn")) {
@@ -144,7 +144,7 @@ describe("Poznań/701 — no extended-course stops (representative trip)", () =>
   });
 
   it("direction names are distinct", () => {
-    const names = r.directions.map((d) => d.direction_name);
+    const names = r.directions.map((d) => `${d.first_stop} → ${d.last_stop}`);
     expect(new Set(names).size).toBe(2);
   });
 });
@@ -331,9 +331,9 @@ describe("Świnoujście/3 — first→last stop grouping, OSRM shapes", () => {
   });
 
   it("direction names contain Posejdon and Dworzec PKP", () => {
-    const names = r.directions.map((d) => d.direction_name);
+    const names = r.directions.map((d) => `${d.first_stop} → ${d.last_stop}`);
     expect(
-      names.some((n) => n.includes("POSEJDON") && n.includes("DWORZEC PKP")),
+      names.some((n) => n.includes("Posejdon") && n.includes("Dworzec PKP")),
     ).toBe(true);
   });
 

@@ -137,7 +137,10 @@ export function createCityRouteMixin() {
         const response = await fetch(`./dist/${this.currentCitySlug}/${this.selectedRouteId}.json`);
         const routeData = await response.json();
         this.currentRoute = routeData;
-        this.directions = routeData.directions;
+        this.directions = routeData.directions.map(d => ({
+          ...d,
+          directionLabel: `${d.first_stop.toUpperCase()} → ${d.last_stop.toUpperCase()}`,
+        }));
 
         const shortName = routeMeta.short_name;
         const routeTypeName = routeMeta.type === 'TRAM' ? 'Tramwaj' : 'Autobus';
@@ -188,12 +191,10 @@ export function createCityRouteMixin() {
 
       localStorage.setItem(`lastDirection_${this.selectedRouteId}`, this.selectedDirectionIdx);
 
-      const stops = this.currentDirection.stops;
-      const firstStop = stops.length > 0 ? (stops[0].stop_name || '?') : '?';
-      const lastStop = stops.length > 0 ? (stops[stops.length - 1].stop_name || '?') : '?';
-      this.routeName = `${firstStop} → ${lastStop}`;
+      const dir = this.currentDirection;
+      this.routeName = `${dir.first_stop} → ${dir.last_stop}`;
 
-      const directionName = this.currentDirection.direction_name;
+      const directionName = `${dir.first_stop.toUpperCase()} → ${dir.last_stop.toUpperCase()}`;
       const shortName = this.currentRoute.short_name;
       const routeTypeName = this.currentRoute.type === 'TRAM' ? 'Tramwaju' : 'Autobusu';
       document.title = `Trasa ${routeTypeName.toLowerCase()} nr ${shortName}: ${directionName} — ${this.currentCityName}`;

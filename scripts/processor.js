@@ -211,11 +211,6 @@ function sanitize(str) {
   return String(str ?? "").replace(/&quot;/g, '"').replace(/"/g, '').trim();
 }
 
-/** Uppercase a stop name for use in `direction_name`. */
-function toUpperName(name) {
-  return name ? sanitize(name).toUpperCase() : "";
-}
-
 /**
  * Build a single direction entry: all trips sharing the same first→last stop
  * pattern use a representative trip (dominant shape) whose stop list defines
@@ -268,8 +263,8 @@ async function buildDirection(routeId, dirTrips, audioOptions, dirOverrides = {}
     firstStop.stop_name === lastStop.stop_name;
 
   const result = {
-    direction: lastStop ? lastStop.stop_name : "",
-    direction_name: `${toUpperName(firstStop ? firstStop.stop_name : "")} - ${toUpperName(lastStop ? lastStop.stop_name : "")}`,
+    first_stop: firstStop ? firstStop.stop_name : "",
+    last_stop: lastStop ? lastStop.stop_name : "",
     is_loop: isLoop,
     shape_id: effectiveShapeId,
     shape,

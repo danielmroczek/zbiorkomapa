@@ -73,7 +73,7 @@
           @change="onDirectionChange()">
           <option value="" disabled x-show="!currentRoute">Wybierz linię</option>
           <template x-for="(dir, idx) in directions" :key="idx">
-            <option :value="idx" x-text="dir.direction_name"></option>
+            <option :value="idx" x-text="dir.directionLabel"></option>
           </template>
         </select>
       </div>
