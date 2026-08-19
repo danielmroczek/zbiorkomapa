@@ -61,10 +61,13 @@ function parseCSV(text) {
   return result;
 }
 
+// Raw override keys are normalized at lookup time (same normalizeLookupValue
+// used on stop names), so case, diacritics and separator style all match.
 const POZNAN_EXCEPTIONS = new Map([
   ["wilczak serbska", "P02B2"],
   ["święty marcin", "P0371"],
   ["św. marcin", "P0371"],
+  ["luboń kurowskiego", "P178C"],
 ]);
 
 /**

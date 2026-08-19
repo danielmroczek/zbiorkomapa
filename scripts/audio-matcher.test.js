@@ -52,6 +52,16 @@ describe('exception', () => {
     const result = matcher.find('Św. Marcin');
     expect(result).toEqual({ audio_id: 'P0371', strategy: 'exception' });
   });
+
+  it('matches "Luboń/Kurowskiego" → P178C despite case and slash', () => {
+    const result = matcher.find('Luboń/Kurowskiego');
+    expect(result).toEqual({ audio_id: 'P178C', strategy: 'exception' });
+  });
+
+  it('matches "Luboń / Kurowskiego" → P178C with spaces around slash', () => {
+    const result = matcher.find('luboń / kurowskiego');
+    expect(result).toEqual({ audio_id: 'P178C', strategy: 'exception' });
+  });
 });
 
 // ---------------------------------------------------------------------------
