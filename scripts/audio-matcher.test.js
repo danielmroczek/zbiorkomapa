@@ -29,6 +29,7 @@ function buildTestLookup() {
     ['deszczowa', 'P00FE'],
     ['dworska', 'P039D'],
     ['żelazna', 'P02DA'],
+    ['jeziory wielkie', 'P1460'],
   ]);
 }
 
@@ -102,6 +103,16 @@ describe('locationOnly', () => {
   it('is case-insensitive', () => {
     const result = matcher.find('rondo kaponiera');
     expect(result).toEqual({ audio_id: 'P0232', strategy: 'locationOnly' });
+  });
+
+  it('matches "Jeziory Wielkie/" → P1460 (locality as stop, trailing slash)', () => {
+    const result = matcher.find('Jeziory Wielkie/');
+    expect(result).toEqual({ audio_id: 'P1460', strategy: 'locationOnly' });
+  });
+
+  it('matches "Jeziory Wielkie" → P1460 (locality as stop, no slash)', () => {
+    const result = matcher.find('Jeziory Wielkie');
+    expect(result).toEqual({ audio_id: 'P1460', strategy: 'locationOnly' });
   });
 });
 

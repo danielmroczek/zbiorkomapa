@@ -20,9 +20,9 @@ import path from "node:path";
 function normalizeLookupValue(value) {
   return String(value || "")
     .toLowerCase()
-    .trim()
     .replace(/\//g, " ")
-    .replace(/\s+/g, " ");
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseCSVLine(text) {
@@ -92,8 +92,15 @@ function buildAudioLookup(audioData) {
       : "";
 
     if (location) {
-      lookup.set(hasStopName ? `${location}|${name}` : `${location}|`, audio.audio_id);
-      lookup.set(location, audio.audio_id);
+      if (hasStopName) {
+        lookup.set(`${location}|${name}`, audio.audio_id);
+      } else {
+        // The stop IS the location (empty nazwa_przystanku), e.g. "Jeziory
+        // Wielkie/". Index it as a bare location so location-only matches can
+        // find it. Only rows with an empty stop name populate this key — a
+        // named stop is a distinct stop, not the locality itself.
+        lookup.set(location, audio.audio_id);
+      }
     }
 
     if (hasStopName && !lookup.has(name)) {
