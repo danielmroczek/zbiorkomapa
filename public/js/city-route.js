@@ -142,12 +142,14 @@ export function createCityRouteMixin() {
         for (const d of dirs) {
           lastStopCounts.set(d.last_stop, (lastStopCounts.get(d.last_stop) || 0) + 1);
         }
-        this.directions = dirs.map(d => ({
-          ...d,
-          directionLabel: lastStopCounts.get(d.last_stop) > 1
-            ? `${d.first_stop.toUpperCase()} → ${d.last_stop.toUpperCase()}`
-            : `→ ${d.last_stop.toUpperCase()}`,
-        }));
+        this.directions = dirs.map(d => {
+          if (d.is_loop) {
+            return { ...d, directionLabel: `↻ ${d.last_stop.toUpperCase()}` };
+          }
+          return lastStopCounts.get(d.last_stop) > 1
+            ? { ...d, directionLabel: `${d.first_stop.toUpperCase()} → ${d.last_stop.toUpperCase()}` }
+            : { ...d, directionLabel: `→ ${d.last_stop.toUpperCase()}` };
+        });
 
         const shortName = routeMeta.short_name;
         const routeTypeName = routeMeta.type === 'TRAM' ? 'Tramwaj' : 'Autobus';
@@ -199,9 +201,13 @@ export function createCityRouteMixin() {
       localStorage.setItem(`lastDirection_${this.selectedRouteId}`, this.selectedDirectionIdx);
 
       const dir = this.currentDirection;
-      this.routeName = `${dir.first_stop} → ${dir.last_stop}`;
+      this.routeName = dir.is_loop
+        ? `↻ ${dir.last_stop}`
+        : `${dir.first_stop} → ${dir.last_stop}`;
 
-      const directionName = `${dir.first_stop.toUpperCase()} → ${dir.last_stop.toUpperCase()}`;
+      const directionName = dir.is_loop
+        ? `↻ ${dir.last_stop.toUpperCase()}`
+        : `${dir.first_stop.toUpperCase()} → ${dir.last_stop.toUpperCase()}`;
       const shortName = this.currentRoute.short_name;
       const routeTypeName = this.currentRoute.type === 'TRAM' ? 'Tramwaju' : 'Autobusu';
       document.title = `Trasa ${routeTypeName.toLowerCase()} nr ${shortName}: ${directionName} — ${this.currentCityName}`;
