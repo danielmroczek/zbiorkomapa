@@ -1,17 +1,16 @@
 import * as L from 'leaflet';
 import * as turf from '@turf/turf';
-import {
-  segmentSpeedAt,
-  vehicleSector,
-  snapStops,
-  MIN_TRAIL_SLICE
-} from './ride-math.js';
+import { createRide } from './ride-core.js';
 
-// Ride (auto-play) mixin — start/stop/pause/resume, animation, vehicle icon
+// Ride (auto-play) Alpine wrapper — owns the Leaflet layers, the
+// requestAnimationFrame loop, audio/voice and engine-sound, and a thin
+// `createRide()` state machine from `ride-core.js` (the deep module). All
+// timing/cancellation/hold logic lives in ride-core; this file is the
+// browser-bound shell that feeds it wall-clock deltas and paints the result.
 
 export function createRideMixin() {
   return {
-    // Ride state
+    // Ride state (mixin-level flags + browser-bound layers/frame)
     isRiding: false,
     isPaused: false,
 
@@ -20,16 +19,10 @@ export function createRideMixin() {
     },
 
     ride: {
-      token: 0,
+      rideCore: null,
       vehicleMarker: null,
       trailLine: null,
       animFrameId: null,
-      vMax: 0,
-      accelTime: 1,
-      pauseState: null,
-      currentStopIndex: 0,
-      currentT: 0,
-      animResolve: null,
       currentSector: 'left',
       highlightedStopIndex: null,
     },
@@ -47,37 +40,33 @@ export function createRideMixin() {
     pauseRide() {
       if (!this.isRiding || this.isPaused) return;
       this.isPaused = true;
-
-      this.ride.token++;
-
       if (this.ride.animFrameId) {
         cancelAnimationFrame(this.ride.animFrameId);
         this.ride.animFrameId = null;
       }
-
-      if (this.ride.animResolve) {
-        this.ride.animResolve();
-        this.ride.animResolve = null;
-      }
-
-      if (!this.ride.pauseState) {
-        this.ride.pauseState = { stopIndex: this.ride.currentStopIndex || 0, t: this.ride.currentT || 0 };
-      }
-      this.ride.currentT = 0;
+      this.ride.rideCore?.pause();
       if (this.engineSoundEnabled) this.engineSound.setRPM(0.15);
     },
 
     resumeRide() {
       if (!this.isRiding || !this.isPaused) return;
       this.isPaused = false;
+      this.ride.rideCore?.resume();
+      this._startFrameLoop();
+    },
 
-      const pauseState = this.ride.pauseState;
-      this.ride.pauseState = null;
-
-      const token = this.ride.token;
-      const stops = this.currentDirection.stops;
-
-      this._rideToStop(token, stops, pauseState.stopIndex, pauseState.t, Boolean(pauseState.pre)).catch(e => console.error('Ride error:', e));
+    // Called by the ride-core module when the vehicle reaches a stop: highlight
+    // the stop and play its audio (or wait a fixed beat), then release the ride.
+    _handleStopReached(ride, stopIndex, stops) {
+      this._highlightStopLabel(stopIndex);
+      const isFirstStop = stopIndex === 0;
+      const isLastStop = stopIndex === stops.length - 1;
+      const release = () => ride.release();
+      if (this.readStopNamesEnabled) {
+        this.playStopAudio(stops[stopIndex], isLastStop, isFirstStop).then(release);
+      } else {
+        setTimeout(release, 1000);
+      }
     },
 
     async startRide() {
@@ -87,74 +76,143 @@ export function createRideMixin() {
       this.isPaused = false;
 
       try {
-        const token = ++this.ride.token;
         const stops = this.currentDirection.stops;
-        const shapeCoords = this.currentDirection.shape.coordinates;
-
-        // Pure ride mechanics: snap stops onto the shape line and get each
-        // stop's distance from the line start. The [lng,lat]↔[lat,lng] swap
-        // for Turf lives inside ride-math, so this caller never touches it.
-        const { stopDists, lineLen } = snapStops(shapeCoords, stops, turf);
-        const turfLine = turf.lineString(shapeCoords.map(c => [c[1], c[0]]));
-
-        this.ride.turfLine = turfLine;
-        this.ride.lineLen = lineLen;
-        this.ride.stopDists = stopDists;
-
-        const avgSegDist = stops.length > 1 ? lineLen / (stops.length - 1) : lineLen;
-        const isSlow = this.rideSpeed === 'slow';
-        this.ride.accelTime = isSlow ? 2 : 1;
-        this.ride.vMax = avgSegDist / (isSlow ? 4 : 2);
-
+        const shape = this.currentDirection.shape.coordinates;
         const routeType = this.currentRoute?.type;
         const vehicleEmoji = routeType === 'TRAM' ? '🚋' : '🚌';
-        const startCoord = shapeCoords[0];
-        const vehicleMarker = L.marker(startCoord, {
+
+        const ride = createRide(turf);
+        this.ride.rideCore = ride;
+
+        const startView = ride.start({
+          shape,
+          stops,
+          speed: this.rideSpeed,
+          onStopReached: (stopIndex) => this._handleStopReached(ride, stopIndex, stops),
+        });
+
+        // Map adapter — owns Layer creation and the initial view.
+        const startCoord = startView.latLng;
+        this.ride.vehicleMarker = L.marker(startCoord, {
           icon: this._createVehicleIcon(vehicleEmoji),
           zIndexOffset: 1000
         }).addTo(this.map);
-        this.ride.vehicleMarker = vehicleMarker;
 
         const trailColor = getComputedStyle(document.documentElement).getPropertyValue('--ride-trail-color').trim() || '#2962FF';
-        const trailLine = L.polyline([], {
+        this.ride.trailLine = L.polyline([], {
           color: trailColor,
           weight: 7,
           opacity: 0.9,
           lineCap: 'round',
           lineJoin: 'round'
         }).addTo(this.map);
-        this.ride.trailLine = trailLine;
 
-        const avgStopDist = stops.length > 1 ? lineLen / (stops.length - 1) : lineLen;
-        const viewRadiusKm = avgStopDist * 2;
-        const mapHeightPx = this.map.getSize().y;
-        const metersPerPixel = (viewRadiusKm * 1000) / (mapHeightPx / 2);
-        // Web-Mercator zoom: metersPerPixel = circumference / (256 * 2^zoom).
-        // We use Turf's mean-Earth circumference (2·π·earthRadius), which is
-        // ~40030174 m — deliberately NOT the WGS84 equatorial 40075016 m. The
-        // difference is <0.2%, far below Leaflet's zoomSnap (0.1), so the
-        // resulting zoom is unchanged in practice. Prefer this to a magic
-        // number; if exact Mercator precision ever matters, restore the
-        // equatorial circumference 40075016 (2·π·6378137).
-        const earthCircumferenceM = 2 * Math.PI * turf.earthRadius;
-        const targetZoom = Math.log2(earthCircumferenceM / (256 * metersPerPixel));
-        const clampedZoom = Math.min(Math.max(targetZoom, this.map.getMinZoom()), this.map.getMaxZoom());
-        this.map.setView(startCoord, clampedZoom, { animate: true });
-
-        this.ride.currentStopIndex = 0;
+        this.map.setView(startCoord, this._computeRideZoom(startView.avgSegDistKm), { animate: true });
 
         if (this.engineSoundEnabled) {
-          const engineType = this.currentRoute?.type === 'TRAM' ? 'tram' : 'bus';
+          const engineType = routeType === 'TRAM' ? 'tram' : 'bus';
           await this.engineSound.start(engineType);
           this.engineSound.setRPM(0.15);
         }
 
-        this._rideToStop(token, stops, 0, 0).catch(e => console.error('Ride error:', e));
+        this._startFrameLoop();
 
       } catch (error) {
         console.error('startRide error:', error);
         this._cleanupRide();
       }
+    },
+
+    // Map's own zoom framing for a ride: an average segment distance (km)
+    // becomes a view radius, converted to a Web-Mercator zoom clamped to the
+    // map's bounds. Kept here because getSize/getMinZoom are map facts; the
+    // ride-core module stays free of them.
+    _computeRideZoom(avgSegDistKm) {
+      const viewRadiusKm = avgSegDistKm * 2;
+      const mapHeightPx = this.map.getSize().y;
+      const metersPerPixel = (viewRadiusKm * 1000) / (mapHeightPx / 2);
+      // See ride.js history: mean-Earth circumference (2·π·earthRadius) is
+      // deliberate — <0.2% below WGS84 equatorial, well under zoomSnap 0.1.
+      const earthCircumferenceM = 2 * Math.PI * turf.earthRadius;
+      const targetZoom = Math.log2(earthCircumferenceM / (256 * metersPerPixel));
+      return Math.min(Math.max(targetZoom, this.map.getMinZoom()), this.map.getMaxZoom());
+    },
+
+    _startFrameLoop() {
+      if (this.ride.animFrameId) return;
+      const ride = this.ride.rideCore;
+      if (!ride) return;
+      let last = performance.now();
+
+      const loop = (now) => {
+        this.ride.animFrameId = null;
+        if (!this.isRiding) return;
+
+        const dt = Math.min((now - last) / 1000, 0.1);
+        last = now;
+
+        let state;
+        try {
+          state = ride.advance(dt);
+        } catch (error) {
+          console.error('Ride error:', error);
+          this.stopRide();
+          return;
+        }
+
+        // Paint returned state onto the map.
+        if (state.highlightIdx != null) this._highlightStopLabel(state.highlightIdx);
+        else this._unhighlightStopLabel();
+
+        if (this.ride.vehicleMarker) this.ride.vehicleMarker.setLatLng(state.position);
+        if (this.ride.trailLine) this.ride.trailLine.setLatLngs(state.trail);
+
+        if (state.sector !== this.ride.currentSector) this._updateVehicleIcon(state.sector);
+
+        if (this.engineSoundEnabled) this.engineSound.setRPM(0.15 + state.speed * 0.85);
+
+        this.map.panTo(state.position, { animate: false, duration: 0 });
+
+        if (state.done) { this._finishRide(); return; }
+        if (this.isPaused) return;
+
+        this.ride.animFrameId = requestAnimationFrame(loop);
+      };
+
+      this.ride.animFrameId = requestAnimationFrame(loop);
+    },
+
+    _finishRide() {
+      this._cleanupRide();
+      if (this.currentPolyline && this.currentPolyline.getLatLngs().length > 0) {
+        this.map.fitBounds(this.currentPolyline.getBounds(), { padding: [50, 50] });
+      }
+    },
+
+    stopRide() {
+      this.ride.rideCore?.stop();
+      this._cleanupRide();
+    },
+
+    _cleanupRide() {
+      if (this.ride.animFrameId) {
+        cancelAnimationFrame(this.ride.animFrameId);
+        this.ride.animFrameId = null;
+      }
+      if (this.ride.vehicleMarker) {
+        this.map.removeLayer(this.ride.vehicleMarker);
+        this.ride.vehicleMarker = null;
+      }
+      if (this.ride.trailLine) {
+        this.map.removeLayer(this.ride.trailLine);
+        this.ride.trailLine = null;
+      }
+      this.ride.rideCore = null;
+      this.ride.currentSector = 'left';
+      this.isRiding = false;
+      this.isPaused = false;
+      this._unhighlightStopLabel();
+      if (this.engineSoundEnabled) this.engineSound.stop();
     },
 
     _createVehicleIcon(emoji, transform = '') {
@@ -166,16 +224,11 @@ export function createRideMixin() {
       });
     },
 
-    _getVehicleSector(bearing) {
-      return vehicleSector(bearing);
-    },
-
     _updateVehicleIcon(sector) {
       const marker = this.ride.vehicleMarker;
       if (!marker || !marker._icon) return;
 
-      const routeType = this.currentRoute?.type;
-      const isTram = routeType === 'TRAM';
+      const isTram = this.currentRoute?.type === 'TRAM';
 
       let emoji, transform;
       if (sector === 'oncoming') {
@@ -195,189 +248,6 @@ export function createRideMixin() {
         innerDiv.style.transform = transform;
       }
       this.ride.currentSector = sector;
-    },
-
-    async _rideToStop(token, stops, stopIndex, resumeT = 0, resumePre = false) {
-      if (token !== this.ride.token) return;
-
-      this.ride.currentStopIndex = stopIndex;
-      const isFirstStop = stopIndex === 0;
-      const isLastStop = stopIndex === stops.length - 1;
-
-      const preDist = this.ride.stopDists ? this.ride.stopDists[0] : 0;
-      if (isFirstStop && !resumePre && preDist > 0) {
-        await this._animateSegment(token, 0, 0, preDist);
-
-        if (token !== this.ride.token) return;
-        if (this.isPaused) {
-          this.ride.pauseState = { stopIndex: 0, t: 0, pre: true };
-          return;
-        }
-      }
-
-      this._highlightStopLabel(stopIndex);
-
-      if (this.engineSoundEnabled) this.engineSound.setRPM(0.15);
-
-      if (resumeT === 0) {
-        if (this.readStopNamesEnabled) {
-          await this.playStopAudio(stops[stopIndex], isLastStop, isFirstStop);
-        } else {
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-
-      if (token !== this.ride.token) return;
-      if (this.isPaused) {
-        this.ride.pauseState = { stopIndex, t: 0 };
-        return;
-      }
-
-      this._unhighlightStopLabel();
-
-      if (isLastStop) {
-        this._finishRide();
-        return;
-      }
-
-      if (resumePre && stopIndex === 0) {
-        await this._animateSegment(token, 0, resumeT, preDist);
-      } else {
-        await this._animateSegment(token, stopIndex, resumeT);
-      }
-
-      if (token !== this.ride.token) return;
-
-      this._rideToStop(token, stops, stopIndex + 1, 0);
-    },
-
-    _animateSegment(token, stopIndex, resumeT = 0, preDist = null) {
-      return new Promise((resolve) => {
-        if (token !== this.ride.token) { resolve(); return; }
-
-        this.ride.animResolve = resolve;
-
-        const turfLine = this.ride.turfLine;
-        const stopDists = this.ride.stopDists;
-        const startDist = preDist != null ? 0 : stopDists[stopIndex];
-        const endDist = preDist != null ? preDist : stopDists[stopIndex + 1];
-        const segLen = endDist - startDist;
-
-        if (segLen <= 0) { resolve(); return; }
-
-        const vMax = this.ride.vMax;
-        const accelTime = this.ride.accelTime;
-
-        const accelDist = vMax * accelTime;
-        let duration;
-        if (segLen >= accelDist) {
-          duration = segLen / vMax + accelTime;
-        } else {
-          duration = 2 * accelTime * Math.sqrt(segLen / accelDist);
-        }
-        const durationMs = duration * 1000;
-
-        const progressAndSpeed = (t) =>
-          segmentSpeedAt({ segLen, vMax, accelTime }, t);
-
-        const startTime = performance.now() - resumeT * durationMs;
-
-        const animate = (now) => {
-          if (token !== this.ride.token) {
-            if (this.isPaused) {
-              const elapsed = now - startTime;
-              const t = Math.min(Math.max(elapsed / durationMs, 0), 1);
-              this.ride.pauseState = preDist != null ? { stopIndex, t, pre: true } : { stopIndex, t };
-            }
-            this.ride.animResolve = null;
-            resolve();
-            return;
-          }
-
-          const elapsed = now - startTime;
-          const t = Math.min(elapsed / durationMs, 1);
-          this.ride.currentT = t;
-
-          const { frac, speed } = progressAndSpeed(t);
-
-          if (this.engineSoundEnabled) this.engineSound.setRPM(0.15 + speed * 0.85);
-
-          const currentDist = startDist + frac * segLen;
-
-          const sliceEnd = Math.max(currentDist, startDist + MIN_TRAIL_SLICE);
-          const trailSlice = turf.lineSliceAlong(turfLine, 0, sliceEnd);
-          const trailLatLngs = trailSlice.geometry.coordinates.map(c => L.latLng(c[1], c[0]));
-          this.ride.trailLine.setLatLngs(trailLatLngs);
-
-          const lastCoord = trailSlice.geometry.coordinates[trailSlice.geometry.coordinates.length - 1];
-          const pos = [lastCoord[1], lastCoord[0]];
-          this.ride.vehicleMarker.setLatLng(pos);
-
-          const nearest = turf.nearestPointOnLine(turfLine, turf.point(lastCoord));
-          let prevIdx = nearest.properties.index;
-          if (prevIdx > 0 && nearest.properties.location < 0.002) {
-            prevIdx--;
-          }
-          const prevVertex = turfLine.geometry.coordinates[Math.max(0, prevIdx)];
-          const bearing = turf.bearing(turf.point(prevVertex), turf.point(lastCoord));
-          const sector = this._getVehicleSector(bearing);
-          if (sector !== this.ride.currentSector) {
-            this._updateVehicleIcon(sector);
-          }
-
-          this.map.panTo(pos, { animate: false, duration: 0 });
-
-          if (t < 1) {
-            this.ride.animFrameId = requestAnimationFrame(animate);
-          } else {
-            this.ride.animFrameId = null;
-            this.ride.animResolve = null;
-            resolve();
-          }
-        };
-
-        this.ride.animFrameId = requestAnimationFrame(animate);
-      });
-    },
-
-    _finishRide() {
-      this._cleanupRide();
-      if (this.currentPolyline && this.currentPolyline.getLatLngs().length > 0) {
-        this.map.fitBounds(this.currentPolyline.getBounds(), { padding: [50, 50] });
-      }
-    },
-
-    stopRide() {
-      this.ride.token++;
-      this._cleanupRide();
-    },
-
-    _cleanupRide() {
-      if (this.ride.animFrameId) {
-        cancelAnimationFrame(this.ride.animFrameId);
-        this.ride.animFrameId = null;
-      }
-      if (this.ride.vehicleMarker) {
-        this.map.removeLayer(this.ride.vehicleMarker);
-        this.ride.vehicleMarker = null;
-      }
-      if (this.ride.trailLine) {
-        this.map.removeLayer(this.ride.trailLine);
-        this.ride.trailLine = null;
-      }
-      this.ride.turfLine = null;
-      this.ride.stopDists = null;
-      this.ride.vMax = 0;
-      this.ride.accelTime = 1;
-      this.isRiding = false;
-      this.isPaused = false;
-      this.ride.pauseState = null;
-      this.ride.currentStopIndex = 0;
-      this.ride.currentT = 0;
-      this.ride.animResolve = null;
-      this.ride.currentSector = 'left';
-      this._unhighlightStopLabel();
-      if (this.engineSoundEnabled) this.engineSound.stop();
     },
 
     _highlightStopLabel(stopIndex) {

@@ -22,14 +22,42 @@ const EPS = 0.0001; // km — min trail slice length guard (see caller)
  * @returns {{ frac:number, speed:number }} frac = fraction of segLen covered,
  *   speed = 0..1 fraction of vMax.
  */
+/**
+ * Duration (seconds) of one segment between two stops, for the accel → cruise
+ * → decel trapezoid (or the "triangle" when the segment is too short to reach
+ * cruise speed). Single source of truth for the segment profile's duration —
+ * shared by `segmentSpeedAt` and the ride-core step walker, so the trapezoid
+ * math can't drift between callers.
+ *
+ * @param {{ segLen:number, vMax:number, accelTime:number }} spec
+ *   segLen = segment length (km), vMax = cruise speed (km/s),
+ *   accelTime = seconds for accel & decel phase.
+ * @returns {number} duration in seconds.
+ */
+export function segmentDurationSec({ segLen, vMax, accelTime }) {
+  const accelDist = vMax * accelTime;
+  if (segLen >= accelDist) {
+    return segLen / vMax + accelTime;
+  }
+  // Triangle profile: 2·t1 where t1 is the (short) accel phase time.
+  return 2 * accelTime * Math.sqrt(segLen / accelDist);
+}
+
+/**
+ * Speed/position profile for one segment between two stops.
+ * Assumes an accel → cruise → decel trapezoid (or a "triangle" when the
+ * segment is too short to reach cruise speed).
+ *
+ * @param {{ segLen:number, vMax:number, accelTime:number }} spec
+ *   segLen = segment length (km), vMax = cruise speed (km/s),
+ *   accelTime = seconds for accel & decel phase.
+ * @param {number} t normalized time in [0, 1] through the segment.
+ * @returns {{ frac:number, speed:number }} frac = fraction of segLen covered,
+ *   speed = 0..1 fraction of vMax.
+ */
 export function segmentSpeedAt({ segLen, vMax, accelTime }, t) {
   const accelDist = vMax * accelTime;
-  let duration;
-  if (segLen >= accelDist) {
-    duration = segLen / vMax + accelTime;
-  } else {
-    duration = 2 * accelTime * Math.sqrt(segLen / accelDist);
-  }
+  const duration = segmentDurationSec({ segLen, vMax, accelTime });
 
   const elapsed = t * duration;
   let pos, speed;

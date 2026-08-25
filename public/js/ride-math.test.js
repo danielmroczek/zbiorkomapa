@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { segmentSpeedAt, vehicleSector, snapStops, routeLengthKm } from './ride-math.js';
+import { segmentSpeedAt, segmentDurationSec, vehicleSector, snapStops, routeLengthKm } from './ride-math.js';
 
 // --- A minimal, deterministic Turf fake for a horizontal straight line. ---
 // Line runs from lon=0 to lon=10 at lat=0 (input as Leaflet [lat,lng]).
@@ -79,6 +79,26 @@ describe('segmentSpeedAt', () => {
       expect(frac).toBeGreaterThanOrEqual(prev);
       prev = frac;
     }
+  });
+});
+
+describe('segmentDurationSec', () => {
+  it('long segment: cruise time + accel + decel', () => {
+    // segLen 100, vMax 10, accelTime 1 → accelDist 10, duration 100/10 + 1 = 11
+    expect(segmentDurationSec({ segLen: 100, vMax: 10, accelTime: 1 })).toBe(11);
+  });
+
+  it('short segment (triangle): 2·accelTime·sqrt(segLen/accelDist)', () => {
+    // accelDist 10 (vMax 10 · accelTime 1); sqrt(1/10) ≈ 0.316; 2·1·that ≈ 0.6325
+    expect(segmentDurationSec({ segLen: 1, vMax: 10, accelTime: 1 })).toBeCloseTo(
+      2 * 1 * Math.sqrt(1 / (10 * 1)), 5
+    );
+  });
+
+  it('matches what segmentSpeedAt reaches at t=1', () => {
+    // segmentSpeedAt consumes exactly the duration at the end of the profile.
+    const spec = { segLen: 100, vMax: 10, accelTime: 1 };
+    expect(segmentDurationSec(spec)).toBe(11);
   });
 });
 
