@@ -262,7 +262,7 @@ select,
   border-top: 1px solid var(--divider);
 }
 
-.kbd {
+kbd {
   display: inline-block;
   padding: 2px 6px;
   font-size: 10px;
