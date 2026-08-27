@@ -37,25 +37,11 @@ import {
 } from "gtfs";
 import { routeSegments } from "./osrm-router.js";
 import { createAudioMatcher } from "./audio-matcher.js";
+import { assemble } from "./route-assembler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-
-// GTFS route_type -> human-readable name (subset used by public transport).
-// Unknown route_type falls back to "BUS" (matches the old processor).
-const ROUTE_TYPES = {
-  0: "TRAM",
-  1: "METRO",
-  2: "RAIL",
-  3: "BUS",
-  4: "TROLLEYBUS",
-  5: "CABLE_CAR",
-};
-
-function getRouteTypeString(routeType) {
-  return ROUTE_TYPES[Number(routeType)] || "BUS";
-}
 
 function slugify(name) {
   return name
@@ -90,29 +76,12 @@ function parseArgs() {
 }
 
 // ---------------------------------------------------------------------------
-// Data building (node-gtfs queries)
+// Data building / adapter (node-gtfs queries) → plain-row bundle
 // ---------------------------------------------------------------------------
 
 // Stop-row cache for this city. Reset per city — stop_ids may collide across
 // feeds, so it must not leak between cities in a multi-city run.
 let stopCache = new Map();
-
-/** Round a coordinate to 12 decimal places (matches the sample outputs). */
-function roundCoord(value) {
-  return Number(Number(value).toFixed(12));
-}
-
-/** Bounding box for a shape's coordinates. */
-function computeBounds(coordinates) {
-  const lats = coordinates.map((c) => c[0]);
-  const lngs = coordinates.map((c) => c[1]);
-  return {
-    minLat: Math.min(...lats),
-    maxLat: Math.max(...lats),
-    minLng: Math.min(...lngs),
-    maxLng: Math.max(...lngs),
-  };
-}
 
 /** Get (and cache) a stop row by stop_id. */
 async function getStopRow(stopId) {
@@ -124,265 +93,56 @@ async function getStopRow(stopId) {
 }
 
 /**
- * Build the "stops" array for one direction from a representative trip.
- * stop_ids are de-duplicated preserving stop_sequence order. Adds audio_id
- * for recordings cities (null when unmatched) and skips it for TTS cities.
+ * Prefetch a city's plain-row bundle for the route assembler. This is the
+ * single place that knows how to turn node-gtfs queries into the plain rows
+ * `assemble` consumes — every assembly decision lives in route-assembler.js,
+ * so the sqlite specifics stay here behind the seam.
  */
-async function buildStops(tripId, audioOptions) {
-  const stoptimes = await getStoptimes(
-    { trip_id: tripId },
-    [],
-    [["stop_sequence", "ASC"]],
-  );
+async function fetchCityBundle(routes, agencies, feedInfo) {
+  const tripsByRouteId = {};
+  const stoptimesByTripId = {};
+  const shapesByShapeId = {};
+  const stopsByStopId = {};
 
-  // Ordered de-duplicated stop ids.
-  const orderedStopIds = [];
-  const seen = new Set();
-  for (const st of stoptimes) {
-    if (!seen.has(st.stop_id)) {
-      seen.add(st.stop_id);
-      orderedStopIds.push(st.stop_id);
-    }
-  }
-
-  // stop_id -> on-demand when any stoptime flags pickup/drop_off type 3.
-  const onDemand = new Set();
-  for (const st of stoptimes) {
-    if (String(st.pickup_type) === "3" || String(st.drop_off_type) === "3") {
-      onDemand.add(st.stop_id);
-    }
-  }
-
-  const stops = [];
-  let sequence = 0;
-  for (const stopId of orderedStopIds) {
-    const row = await getStopRow(stopId);
-    if (!row) continue;
-
-    const stop = {
-      stop_id: stopId,
-      stop_name: sanitize(row.stop_name),
-      stop_lat: roundCoord(row.stop_lat),
-      stop_lon: roundCoord(row.stop_lon),
-      stop_code: row.stop_code,
-      stop_sequence: sequence,
-      zone_id: row.zone_id,
-      is_on_demand: onDemand.has(stopId),
-    };
-
-    if (audioOptions.enabled) {
-      audioOptions.stats.total++;
-      const match = audioOptions.matcher.find(stop.stop_name);
-      stop.audio_id = match ? match.audio_id : null;
-      if (match) {
-        audioOptions.stats.matched++;
-        audioOptions.stats.strategies[match.strategy] =
-          (audioOptions.stats.strategies[match.strategy] || 0) + 1;
-      } else {
-        audioOptions.stats.unmatched++;
+  for (const route of routes) {
+    const trips = await getTrips({ route_id: route.route_id });
+    tripsByRouteId[route.route_id] = trips;
+    for (const trip of trips) {
+      stoptimesByTripId[trip.trip_id] = await getStoptimes(
+        { trip_id: trip.trip_id },
+        [],
+        [["stop_sequence", "ASC"]],
+      );
+      if (trip.shape_id && !shapesByShapeId[trip.shape_id]) {
+        shapesByShapeId[trip.shape_id] = await getShapes(
+          { shape_id: trip.shape_id },
+          [],
+          [["shape_pt_sequence", "ASC"]],
+        );
       }
     }
-
-    stops.push(stop);
-    sequence += 1;
   }
-  return stops;
-}
 
-/** Fetch shape coordinates for a shape_id, ordered by shape_pt_sequence. */
-async function buildShape(shapeId) {
-  const points = await getShapes(
-    { shape_id: shapeId },
-    [],
-    [["shape_pt_sequence", "ASC"]],
-  );
-  const coordinates = points.map((p) => [
-    roundCoord(p.shape_pt_lat),
-    roundCoord(p.shape_pt_lon),
-  ]);
-  return {
-    coordinates,
-    bounds: coordinates.length ? computeBounds(coordinates) : null,
-  };
-}
-
-/** Strip GTFS-encoded quotes and trim whitespace. */
-function sanitize(str) {
-  return String(str ?? "").replace(/&quot;/g, '"').replace(/"/g, '').trim();
-}
-
-/**
- * Build a single direction entry: all trips sharing the same first→last stop
- * pattern use a representative trip (dominant shape) whose stop list defines
- * the route.
- *
- * dirOverrides: optional per-direction overrides (color, text_color) from
- * merged GTFS route entries (Gorzów pattern: same short_name, different
- * route_ids for each direction).
- */
-async function buildDirection(routeId, dirTrips, audioOptions, dirOverrides = {}) {
-  const shapeCounts = new Map();
-  for (const t of dirTrips) {
-    shapeCounts.set(t.shape_id, (shapeCounts.get(t.shape_id) || 0) + 1);
-  }
-  const shapeId = [...shapeCounts.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  const repTrip = dirTrips.find((t) => t.shape_id === shapeId) || dirTrips[0];
-
-  const stops = await buildStops(repTrip.trip_id, audioOptions);
-
-  // Shape from GTFS, or via OSRM when the feed has no usable shape.
-  let shape = await buildShape(shapeId);
-  let effectiveShapeId = shapeId;
-  if (shape.coordinates.length === 0 && stops.length >= 2) {
-    console.log(
-      `    OSRM: ${stops[0].stop_name} → ${stops[stops.length - 1].stop_name} (${stops.length} przystanków)...`,
-    );
-    try {
-      const coords = await routeSegments(stops);
-      shape = { coordinates: coords, bounds: coords.length ? computeBounds(coords) : null };
-      effectiveShapeId = "osrm-generated";
-      console.log(`    OSRM: ${coords.length} punktów kształtu`);
-    } catch (err) {
-      // Fallback: straight lines between stops so the route still renders.
-      console.error(`    OSRM error: ${err.message}, używam prostych linii`);
-      shape = { coordinates: stops.map((s) => [s.stop_lat, s.stop_lon]), bounds: computeBounds(stops.map((s) => [s.stop_lat, s.stop_lon])) };
-      effectiveShapeId = "straight-line-fallback";
+  // Resolve every referenced stop once (cached across the whole city).
+  const needStops = new Set();
+  for (const tripId of Object.keys(stoptimesByTripId)) {
+    for (const st of stoptimesByTripId[tripId]) {
+      needStops.add(st.stop_id);
     }
   }
-
-  const firstStop = stops[0];
-  const lastStop = stops[stops.length - 1];
-  const serviceIds = [...new Set(dirTrips.map((t) => t.service_id))].sort();
-
-  // A loop route returns to its starting point: first and last stop share
-  // the same name (stop_ids may differ — e.g. opposite sides of a terminus).
-  // ponytail: name-based check, not stop_id, because GTFS often assigns
-  // different ids to the inbound/outbound platform of the same station.
-  const isLoop = stops.length >= 3 &&
-    firstStop && lastStop &&
-    firstStop.stop_name === lastStop.stop_name;
-
-  const result = {
-    first_stop: firstStop ? firstStop.stop_name : "",
-    last_stop: lastStop ? lastStop.stop_name : "",
-    is_loop: isLoop,
-    shape_id: effectiveShapeId,
-    shape,
-    stops,
-    stop_count: stops.length,
-    service_ids: serviceIds,
-    trip_count: dirTrips.length,
-    shape_frequency: shapeCounts.get(shapeId),
-  };
-
-  // Per-direction color overrides (Gorzów: each GTFS route_id has its own
-  // color, but we merge them into one line with multiple directions).
-  if (dirOverrides.color) result.color = dirOverrides.color;
-  if (dirOverrides.text_color) result.text_color = dirOverrides.text_color;
-
-  return result;
-}
-
-/**
- * Group trips by direction.
- *
- * Strategy: use direction_id when it meaningfully splits the trips into 2+
- * groups (Poznań sets it correctly). When all trips share the same
- * direction_id (Świnoujście omits it, Gorzów sets it uniformly), fall back
- * to grouping by first→last stop pair.
- *
- * ponytail: two-tier strategy because no single GTFS field works across all
- * three feeds. direction_id is the canonical field but many feeds ignore it.
- * The fallback (first→last stop) is coarser — variant trips with different
- * short-turn terminals become separate directions — but that's acceptable
- * because those variants ARE different routes from the rider's perspective.
- */
-async function groupTripsByDirection(trips) {
-  // Check if direction_id meaningfully splits the trips.
-  const byDirId = new Map();
-  for (const t of trips) {
-    const key = t.direction_id ?? "0";
-    if (!byDirId.has(key)) byDirId.set(key, []);
-    byDirId.get(key).push(t);
-  }
-
-  if (byDirId.size >= 2) {
-    // direction_id splits trips into 2+ groups — use it (Poznań path).
-    return byDirId;
-  }
-
-  // direction_id is uniform — fall back to first→last stop (Świnoujście path).
-  const byStopPair = new Map();
-  for (const trip of trips) {
-    const stoptimes = await getStoptimes(
-      { trip_id: trip.trip_id },
-      [],
-      [["stop_sequence", "ASC"]],
-    );
-    if (stoptimes.length === 0) continue;
-
-    const firstStopId = stoptimes[0].stop_id;
-    const lastStopId = stoptimes[stoptimes.length - 1].stop_id;
-    const key = `${firstStopId}|${lastStopId}`;
-
-    if (!byStopPair.has(key)) byStopPair.set(key, []);
-    byStopPair.get(key).push(trip);
-  }
-  return byStopPair;
-}
-
-/**
- * Build the full JSON object for a single route.
- *
- * mergedDirections: when GTFS splits one logical line into multiple route_ids
- * (Gorzów pattern), the processor pre-merges them and passes the combined
- * trips + per-direction color overrides here. Each entry is
- * { trips, overrides: { color?, text_color? } }.
- */
-async function buildRoute(route, agenciesByAgencyId, feedInfo, audioOptions, mergedDirections = null) {
-  const agency = route.agency_id
-    ? agenciesByAgencyId.get(route.agency_id)
-    : undefined;
-
-  const routeColor = route.route_color || "525252";
-  const routeTextColor = route.route_text_color || "FFFFFF";
-
-  let directions;
-
-  if (mergedDirections) {
-    // Pre-merged directions (Gorzów: multiple route_ids → one logical line).
-    directions = [];
-    for (const { trips, overrides } of mergedDirections) {
-      // Each "direction" here is already grouped by first→last stop from the
-      // merge step, so all trips in this bucket share one direction.
-      directions.push(await buildDirection(route.route_id, trips, audioOptions, overrides));
-    }
-  } else {
-    // Normal path: group this route's trips by first→last stop.
-    const trips = await getTrips({ route_id: route.route_id });
-    const byDirection = await groupTripsByDirection(trips);
-    directions = [];
-    for (const dirTrips of byDirection.values()) {
-      directions.push(await buildDirection(route.route_id, dirTrips, audioOptions));
-    }
+  for (const stopId of needStops) {
+    const row = await getStopRow(stopId);
+    if (row) stopsByStopId[stopId] = [row];
   }
 
   return {
-    route_id: route.route_id,
-    short_name: sanitize(route.route_short_name),
-    color: routeColor,
-    text_color: routeTextColor,
-    type: getRouteTypeString(route.route_type),
-    agency_name: agency ? sanitize(agency.agency_name) : "",
-    feed_info: feedInfo
-      ? {
-          feed_start_date: sanitize(feedInfo.feed_start_date),
-          feed_end_date: sanitize(feedInfo.feed_end_date),
-          feed_publisher_name: feedInfo.feed_publisher_name,
-          feed_publisher_url: feedInfo.feed_publisher_url,
-        }
-      : null,
-    directions,
+    routes,
+    tripsByRouteId,
+    stoptimesByTripId,
+    shapesByShapeId,
+    stopsByStopId,
+    agencies,
+    feedInfo,
   };
 }
 
@@ -467,76 +227,26 @@ async function processCity(cityConfig, { force }) {
     const feedInfoArr = await getFeedInfo();
     const feedInfo = feedInfoArr[0] || null;
 
-    const agenciesByAgencyId = new Map();
-    for (const a of agencies) agenciesByAgencyId.set(a.agency_id, a);
+    // Everything below the plain-row bundle is a pure assembly decision —
+    // route grouping, direction splitting, merges, shapes, audio — and lives
+    // in route-assembler.js. This file's only remaining job is to fetch the
+    // rows (the adapter) and persist the outputs.
+    const bundle = await fetchCityBundle(routes, agencies, feedInfo);
+    const routeData = await assemble(bundle, {
+      audio: audioOptions,
+      routeSegments,
+    });
 
-    // Detect duplicate short_names (Gorzów pattern: one logical line split
-    // across multiple GTFS route_ids, each representing a direction/variant).
-    // Group them so they merge into one output route with multiple directions.
-    const byShortName = new Map();
-    for (const route of routes) {
-      const sn = route.route_short_name;
-      if (!byShortName.has(sn)) byShortName.set(sn, []);
-      byShortName.get(sn).push(route);
-    }
-
-    const routeData = [];
-    for (const [shortName, routeGroup] of byShortName) {
-      if (routeGroup.length === 1) {
-        // Normal case: one GTFS route_id per short_name.
-        const route = routeGroup[0];
-        const result = await buildRoute(route, agenciesByAgencyId, feedInfo, audioOptions);
-        const totalStops = result.directions.reduce((sum, d) => sum + d.stops.length, 0);
-        fs.writeFileSync(
-          path.join(outputDir, `${result.route_id}.json`),
-          JSON.stringify(result, null, 2),
-          "utf8",
-        );
-        routeData.push(result);
-        console.log(
-          `  Zapisano: ${result.route_id}.json (${result.directions.length} kierunki, ${totalStops} przystanków)`,
-        );
-      } else {
-        // Gorzów pattern: multiple route_ids share the same short_name.
-        // Merge them into one logical route with multiple directions.
-        // Use the first route_id as the canonical one for the output file.
-        const canonical = routeGroup[0];
-        console.log(
-          `  Łączę ${routeGroup.length} route_ids dla linii ${shortName}: ${routeGroup.map(r => r.route_id).join(', ')}`,
-        );
-
-        // For each sub-route, load its trips and group by first→last stop,
-        // then attach per-direction color overrides from the sub-route.
-        const mergedDirections = [];
-        for (const subRoute of routeGroup) {
-          const trips = await getTrips({ route_id: subRoute.route_id });
-          const byDir = await groupTripsByDirection(trips);
-          for (const dirTrips of byDir.values()) {
-            mergedDirections.push({
-              trips: dirTrips,
-              overrides: {
-                color: subRoute.route_color || undefined,
-                text_color: subRoute.route_text_color || undefined,
-              },
-            });
-          }
-        }
-
-        const result = await buildRoute(
-          canonical, agenciesByAgencyId, feedInfo, audioOptions,
-          mergedDirections,
-        );
-        const totalStops = result.directions.reduce((sum, d) => sum + d.stops.length, 0);
-        fs.writeFileSync(
-          path.join(outputDir, `${result.route_id}.json`),
-          JSON.stringify(result, null, 2),
-          "utf8",
-        );
-        routeData.push(result);
-        console.log(
-          `  Zapisano: ${result.route_id}.json (${result.directions.length} kierunki, ${totalStops} przystanków) [połączono ${routeGroup.length} route_ids]`,
-        );
-      }
+    for (const result of routeData) {
+      const totalStops = result.directions.reduce((sum, d) => sum + d.stops.length, 0);
+      fs.writeFileSync(
+        path.join(outputDir, `${result.route_id}.json`),
+        JSON.stringify(result, null, 2),
+        "utf8",
+      );
+      console.log(
+        `  Zapisano: ${result.route_id}.json (${result.directions.length} kierunki, ${totalStops} przystanków)`,
+      );
     }
 
     if (isRecordings) {
