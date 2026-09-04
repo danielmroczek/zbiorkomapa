@@ -5,6 +5,7 @@
       "gtfsUrl": "https://www.ztm.poznan.pl/pl/dla-deweloperow/getGTFSFile",
       "audioBaseUrl": "https://www.ztm.poznan.pl/pl/dla-deweloperow/getVoiceAnnouncements/?file=",
       "audioSource": "recordings",
+      "audioVolume": 0.5,
       "ttsLang": "pl-PL"
     },
     {

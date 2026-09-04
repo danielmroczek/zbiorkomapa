@@ -165,6 +165,7 @@ await this.ttsSpeak(stop?.stop_name || '');
               if (!audio) {
                 this.isLoading = true;
                 audio = new Audio(audioUrl);
+                audio.volume = app.currentCityConfig?.audioVolume ?? 1;                
                 audio.addEventListener('canplaythrough', () => {
                   this.isLoading = false;
                 });

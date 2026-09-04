@@ -354,6 +354,7 @@ async function main() {
         ttsLang: c.ttsLang || "pl-PL",
       };
       if (c.audioBaseUrl) entry.audioBaseUrl = c.audioBaseUrl;
+      if (c.audioVolume != null) entry.audioVolume = c.audioVolume;
       return entry;
     });
     fs.writeFileSync(
