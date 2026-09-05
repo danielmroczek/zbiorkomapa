@@ -19,8 +19,39 @@ export function createAudioMixin() {
       return this.getVoiceAnnouncementUrl(`${audioId}.mp3`);
     },
 
+    // Expand common abbreviations before reading a stop name aloud so TTS
+    // pronounces them as full words ("Os." -> "Osiedle"). Key: raw text token,
+    // value: spoken expansion. Add new entries here as needed.
+    ttsExceptions: {
+      'os.': 'osiedle',
+      'ul.': 'ulica',
+      'al.': 'aleje',
+      'pl.': 'plac',
+      'sz.': 'szpital',
+    },
+
+    _expandTtsText(text) {
+      if (!text) return text;
+      const exceptions = this.ttsExceptions;
+      // Anchor each abbreviation to a word boundary so "(os.", ",ul." or
+      // "Kruszewnia/Os." still match, but "kios." never becomes part of a
+      // longer word. "/" separates location/name parts in stop names.
+      const pattern = new RegExp(
+        `(^|[\\s(,/\\[\\]])(${Object.keys(exceptions)
+          .map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+          .join('|')})(?=[\\s).,;]|$)`,
+        'giu',
+      );
+      return text.replace(pattern, (match, lead, key) => {
+        const expansion = String(exceptions[key.toLowerCase()]);
+        // Keep the original leading punctuation.
+        return lead + expansion;
+      });
+    },
+
     async ttsSpeak(text) {
       if (!('speechSynthesis' in window)) return;
+      text = this._expandTtsText(text);
 
       const voices = await this.getTTSVoices();
       const utterance = new SpeechSynthesisUtterance(text);
