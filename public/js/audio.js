@@ -23,11 +23,12 @@ export function createAudioMixin() {
     // pronounces them as full words ("Os." -> "Osiedle"). Key: raw text token,
     // value: spoken expansion. Add new entries here as needed.
     ttsExceptions: {
-      'os.': 'osiedle',
-      'ul.': 'ulica',
-      'al.': 'aleje',
-      'pl.': 'plac',
-      'sz.': 'szpital',
+      'os.': 'osiedle', // Eg. "Os. Radosne"
+      'pl.': 'plac', // Eg. "Jerzykowo/pl. Piastowski"
+      'i armii': 'pierwszej armii', //Eg. "I Armii Wojska Polsk"
+      'i': 'jeden',
+      'ii': 'dwa',
+      'iii': 'trzy'
     },
 
     _expandTtsText(text) {
