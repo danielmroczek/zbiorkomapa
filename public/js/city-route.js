@@ -119,8 +119,16 @@ export function createCityRouteMixin() {
       }
     },
 
+    // After choosing from a combobox, drop focus so Space (the ride toggle)
+    // never re-opens the dropdown instead of starting/pausing the ride.
+    blurSelect() {
+      const el = document.activeElement;
+      if (el && (el.tagName === 'SELECT' || el.tagName === 'INPUT')) el.blur();
+    },
+
     async onRouteChange() {
       if (this.isRiding) this.stopRide();
+      this.blurSelect();
 
       if (!this.selectedRouteId) {
         this.currentRoute = null;
@@ -192,6 +200,7 @@ export function createCityRouteMixin() {
 
     async onDirectionChange() {
       if (this.isRiding) this.stopRide();
+      this.blurSelect();
 
       if (!this.currentRoute || this.selectedDirectionIdx == null) return;
 
