@@ -231,7 +231,7 @@ export function createCityRouteMixin() {
       const endDate = feedInfo.feed_end_date || '';
       if (startDate && endDate) {
         const fmt = d => `${d.substring(6)}.${d.substring(4, 6)}.${d.substring(0, 4)}`;
-        this.printDates = `Obowiązuje: ${fmt(startDate)}–${fmt(endDate)}`;
+        this.printDates = `${fmt(startDate)}–${fmt(endDate)}`;
       } else {
         this.printDates = 'Brak danych';
       }
