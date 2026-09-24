@@ -19,6 +19,12 @@
       "gtfsUrl": "https://bip.mzk-gorzow.com.pl/files/file_add/download/77_gtfsgw.zip",
       "audioSource": "tts",
       "ttsLang": "pl-PL"
+    },
+    {
+      "name": "Nowy Tomyśl",
+      "gtfsUrl": "https://github.com/danielmroczek/gtfs-nt/releases/latest/download/gtfs-nt.zip",
+      "audioSource": "tts",
+      "ttsLang": "pl-PL"
     }
   ]
 }

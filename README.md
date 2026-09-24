@@ -1,6 +1,6 @@
 # Zbiorkomapa
 
-Zbiorkomapa to interaktywna wizualizacja tras komunikacji miejskiej. Projekt łączy dane GTFS z mapą, umożliwiając przeglądanie linii, wyboru kierunku oraz analizę tras i przystanków. Obsługuje wiele miast — obecnie Poznań, Świnoujście i Gorzów Wielkopolski.
+Zbiorkomapa to interaktywna wizualizacja tras komunikacji miejskiej. Projekt łączy dane GTFS z mapą, umożliwiając przeglądanie linii, wyboru kierunku oraz analizę tras i przystanków. Obsługuje wiele miast — obecnie Poznań, Świnoujście, Gorzów Wielkopolski i Nowy Tomyśl.
 
 ## Demo
 
@@ -8,7 +8,7 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 
 ## Najważniejsze funkcje
 
-- obsługa wielu miast (Poznań, Świnoujście, Gorzów Wielkopolski) z łatwą możliwością dodawania kolejnych
+- obsługa wielu miast (Poznań, Świnoujście, Gorzów Wielkopolski, Nowy Tomyśl) z łatwą możliwością dodawania kolejnych
 - przeglądanie tras tramwajowych i autobusowych
 - wybór linii oraz kierunku jazdy
 - podgląd długości trasy i liczby przystanków

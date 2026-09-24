@@ -35,7 +35,7 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 
 ## Project overview
 
-This repository builds an interactive visualizer for public transport routes. The app is driven by GTFS data and a small build pipeline that turns raw timetable files into browser-ready assets for the frontend in the public folder. It supports multiple cities — currently Poznań, Świnoujście, and Gorzów Wielkopolski.
+This repository builds an interactive visualizer for public transport routes. The app is driven by GTFS data and a small build pipeline that turns raw timetable files into browser-ready assets for the frontend in the public folder. It supports multiple cities — currently Poznań, Świnoujście, Gorzów Wielkopolski, and Nowy Tomyśl.
 
 ## Repository layout
 
