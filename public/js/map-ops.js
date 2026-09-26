@@ -45,13 +45,19 @@ export function createMapOpsMixin() {
 
         if (e.key === 'ArrowRight' || (e.key === '>' && e.shiftKey)) {
           e.preventDefault();
-          this.nextDirectionOrRoute();
+          this.advanceNav(1);
         } else if (e.key === 'ArrowLeft' || (e.key === '<' && e.shiftKey)) {
           e.preventDefault();
-          this.prevDirectionOrRoute();
+          this.advanceNav(-1);
         } else if (e.key === ' ') {
           e.preventDefault();
           this.togglePlayPause();
+        }
+      });
+
+      document.addEventListener('keyup', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === '>' || e.key === '<') {
+          this.flushNav();
         }
       });
     },

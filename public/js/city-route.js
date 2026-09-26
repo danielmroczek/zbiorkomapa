@@ -3,6 +3,39 @@
 import * as turf from '@turf/turf';
 import { routeLengthKm } from './ride-math.js';
 
+// Shared badge look (used by full load AND arrow-key preview, so they can't drift).
+function badgeLook(routeMeta, hexToRgb) {
+  let bgColor = `#${routeMeta.color}`;
+  let textColor = `#${routeMeta.text_color}`;
+
+  const isSpecialGray = bgColor.toUpperCase() === '#525252' && textColor.toUpperCase() === '#FFFFFF';
+  if (isSpecialGray) {
+    bgColor = '#FFFFFF';
+    textColor = '#000000';
+  }
+
+  let badgeClass = routeMeta.type === 'TRAM' ? 'route-badge' : 'route-badge bus';
+  const badgeStyle = {
+    'background-color': bgColor,
+    'color': textColor
+  };
+
+  const rgb = typeof hexToRgb === 'function' ? hexToRgb(bgColor) : null;
+  if (rgb && rgb.r > 240 && rgb.g > 240 && rgb.b > 240) {
+    badgeClass += ' light-bg';
+    badgeStyle['border-color'] = textColor;
+  }
+
+  return { badgeClass, badgeStyle };
+}
+
+// Panel title line, shared by full load and the arrow-key preview.
+function panelTitleFor(routeMeta, cityName) {
+  const typeName = routeMeta.type === 'TRAM' ? 'Tramwaj' : 'Autobus';
+  const emoji = routeMeta.type === 'TRAM' ? '🚋' : '🚌';
+  return { emoji, title: `${emoji} ${typeName} nr ${routeMeta.short_name} — ${cityName}` };
+}
+
 export function createCityRouteMixin() {
   return {
     // City data
@@ -160,33 +193,13 @@ export function createCityRouteMixin() {
         });
 
         const shortName = routeMeta.short_name;
-        const routeTypeName = routeMeta.type === 'TRAM' ? 'Tramwaj' : 'Autobus';
-        const routeTypeEmoji = routeMeta.type === 'TRAM' ? '🚋' : '🚌';
+        const look = badgeLook(routeMeta, this.hexToRgb);
+        this.badgeClass = look.badgeClass;
+        this.badgeStyle = look.badgeStyle;
+        const { emoji, title } = panelTitleFor(routeMeta, this.currentCityName);
+        this.routeTypeEmoji = emoji;
+        this.panelTitle = title;
         this.shortName = shortName;
-        this.routeTypeEmoji = routeTypeEmoji;
-
-        let bgColor = `#${routeMeta.color}`;
-        let textColor = `#${routeMeta.text_color}`;
-
-        const isSpecialGray = bgColor.toUpperCase() === '#525252' && textColor.toUpperCase() === '#FFFFFF';
-        if (isSpecialGray) {
-          bgColor = '#FFFFFF';
-          textColor = '#000000';
-        }
-
-        this.badgeClass = routeMeta.type === 'TRAM' ? 'route-badge' : 'route-badge bus';
-        this.badgeStyle = {
-          'background-color': bgColor,
-          'color': textColor
-        };
-
-        const rgb = this.hexToRgb(bgColor);
-        if (rgb && rgb.r > 240 && rgb.g > 240 && rgb.b > 240) {
-          this.badgeClass += ' light-bg';
-          this.badgeStyle['border-color'] = textColor;
-        }
-
-        this.panelTitle = `${routeTypeEmoji} ${routeTypeName} nr ${shortName} — ${this.currentCityName}`;
         const savedDir = localStorage.getItem(`lastDirection_${this.selectedRouteId}`);
         const dirIdx = savedDir ? parseInt(savedDir, 10) : 0;
         this.selectedDirectionIdx = (dirIdx >= 0 && dirIdx < this.directions.length) ? dirIdx : 0;
@@ -240,51 +253,75 @@ export function createCityRouteMixin() {
       this.drawStops(this.currentRoute, this.currentDirection);
     },
 
-    nextDirectionOrRoute() {
-      if (!this.currentRoute || this.directions.length === 0) return;
+    // ponytail: keydown auto-repeat only flips the pending pointer and updates
+    // the panel badge (cheap, no fetch/map work); the route itself loads in
+    // flushNav on keyup. No debounce auto-flush — holding must never reload.
+    // Safety: a stuck/lost keyup still loads after 10s of inactivity.
+    advanceNav(step) {
+      if (this.routes.length === 0) return;
 
-      const nextIdx = this.selectedDirectionIdx + 1;
-      if (nextIdx < this.directions.length) {
-        this.selectedDirectionIdx = nextIdx;
-        this.onDirectionChange();
-        localStorage.setItem(`lastDirection_${this.selectedRouteId}`, this.selectedDirectionIdx);
+      let ri = this.routes.findIndex(r => r.route_id === this.selectedRouteId);
+      let di = this.selectedDirectionIdx ?? 0;
+      if (this.pendingNav) {
+        ri = this.pendingNav.routeIndex;
+        di = this.pendingNav.dirIndex;
+      }
+      if (ri === -1) return;
+
+      // ponytail: routes.json index has direction_count, not a directions array.
+      const dirCount = () => Math.max(1, this.routes[ri].direction_count || 1);
+      if (step > 0) {
+        di++;
+        while (di >= dirCount()) {
+          di = 0;
+          ri = (ri + 1) % this.routes.length;
+        }
       } else {
-        const routeIndex = this.routes.findIndex(r => r.route_id === this.selectedRouteId);
-        if (routeIndex === -1) return;
+        di--;
+        while (di < 0) {
+          ri = (ri - 1 + this.routes.length) % this.routes.length;
+          di = dirCount() - 1;
+        }
+      }
 
-        const nextRouteIndex = (routeIndex + 1) % this.routes.length;
-        const nextRoute = this.routes[nextRouteIndex];
+      this.pendingNav = { routeIndex: ri, dirIndex: di };
 
-        this.selectedRouteId = nextRoute.route_id;
+      // Live preview: flip the badge/flyout number without loading the route.
+      // Same look computation as full load — gray/white routes and light-bg
+      // borders must render identically mid-scrub.
+      const preview = this.routes[ri];
+      const look = badgeLook(preview, this.hexToRgb);
+      const { emoji, title } = panelTitleFor(preview, this.currentCityName);
+      this.shortName = preview.short_name;
+      this.routeTypeEmoji = emoji;
+      this.badgeClass = look.badgeClass;
+      this.badgeStyle = look.badgeStyle;
+      this.panelTitle = title;
+
+      clearTimeout(this.navDebounceTimer);
+      this.navDebounceTimer = setTimeout(() => this.flushNav(), 10000);
+    },
+
+    flushNav() {
+      clearTimeout(this.navDebounceTimer);
+      const pending = this.pendingNav;
+      this.pendingNav = null;
+      if (!pending) return;
+
+      const target = this.routes[pending.routeIndex];
+      if (!target) return;
+      const dirIdx = Math.min(pending.dirIndex, Math.max(1, target.direction_count || 1) - 1);
+
+      if (target.route_id === this.selectedRouteId) {
+        this.selectedDirectionIdx = dirIdx;
+        this.onDirectionChange();
+      } else {
+        this.selectedRouteId = target.route_id;
         this.onRouteChange().then(() => {
-          this.selectedDirectionIdx = 0;
+          this.selectedDirectionIdx = dirIdx;
           this.onDirectionChange();
         });
       }
     },
-
-    prevDirectionOrRoute() {
-      if (!this.currentRoute || this.directions.length === 0) return;
-
-      const prevIdx = this.selectedDirectionIdx - 1;
-      if (prevIdx >= 0) {
-        this.selectedDirectionIdx = prevIdx;
-        this.onDirectionChange();
-        localStorage.setItem(`lastDirection_${this.selectedRouteId}`, this.selectedDirectionIdx);
-      } else {
-        const routeIndex = this.routes.findIndex(r => r.route_id === this.selectedRouteId);
-        if (routeIndex === -1) return;
-
-        const prevRouteIndex = routeIndex === 0 ? this.routes.length - 1 : routeIndex - 1;
-        const prevRoute = this.routes[prevRouteIndex];
-
-        this.selectedRouteId = prevRoute.route_id;
-        this.onRouteChange().then(() => {
-          const routeData = this.currentRoute;
-          this.selectedDirectionIdx = routeData.directions.length - 1;
-          this.onDirectionChange();
-        });
-      }
-    }
   };
 }
