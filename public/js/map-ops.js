@@ -22,7 +22,10 @@ export function createMapOpsMixin() {
       this.map = L.map('map', {
         doubleClickZoom: false,
         zoomSnap: 0.1,
-        zoomDelta: 0.1
+        zoomDelta: 0.1,
+        // Arrows/space are ours (route nav, ride toggle) and must never pan/zoom
+        // the map, regardless of where focus sits.
+        keyboard: false
       }).setView([52.0, 19.0], 6);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
