@@ -2,6 +2,10 @@
 
 Wszystkie istotne zmiany w projekcie Zbiorkomapa, pogrupowane według daty.
 
+## 2026-09-27
+
+- Strzałki nie przesuwają już mapy (wyłączono klawiaturę Leafleta) — niezależnie od fokusu służą wyłącznie do nawigacji linii i sterowania jazdą.
+
 ## 2026-09-26
 
 - Nawigacja strzałkami (←/→) działa teraz w dwóch fazach: trzymanie klawisza tylko przelatuje numerami linii w panelu (bez przeładowywania trasy na mapie), a właściwe załadowanie następuje po puszczeniu klawisza. Naprawiono też migający kolor plakietki linii podczas szybkiego przełączania.
