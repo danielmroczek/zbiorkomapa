@@ -63,7 +63,7 @@ export function createRideMixin() {
       const isLastStop = stopIndex === stops.length - 1;
       const release = () => ride.release();
       if (this.readStopNamesEnabled) {
-        this.playStopAudio(stops[stopIndex], isLastStop, isFirstStop).then(release);
+        this.playStopAudio(stops[stopIndex], { first: isFirstStop, last: isLastStop }).then(release);
       } else {
         setTimeout(release, 1000);
       }

@@ -1,4 +1,6 @@
-// Audio mixin — player, TTS, beep, voice announcements
+// Audio mixin — adapter for <Audio> and speechSynthesis; cue sequencing and
+// cancellation live in the stop-announcement module (the seam-owner).
+import { createAnnouncer } from './stop-announcement.js';
 
 export function createAudioMixin() {
   return {
@@ -12,11 +14,6 @@ export function createAudioMixin() {
       const baseUrl = this.currentCityConfig?.audioBaseUrl;
       if (!baseUrl) return '';
       return `${baseUrl}${encodeURIComponent(fileName)}`;
-    },
-
-    getStopAudioUrl(stop) {
-      const audioId = stop?.audio_id || stop?.stop_code || stop?.stop_id;
-      return this.getVoiceAnnouncementUrl(`${audioId}.mp3`);
     },
 
     // Expand common abbreviations before reading a stop name aloud so TTS
@@ -106,63 +103,27 @@ export function createAudioMixin() {
       });
     },
 
-    playStopAudio(stop, isLastStop = false, isFirstStop = false) {
-      const audioSource = this.currentCityConfig?.audioSource || 'tts';
+    playStopAudio(stop, flags = {}) {
+      return this.announcer?.announce(stop, flags);
+    },
 
-      if (audioSource === 'tts') {
-        return this._playStopAudioTTS(stop, isLastStop, isFirstStop);
-      } else if (stop?.audio_id == null) {
-        // Recording city but stop has no recording: TTS for name, recordings for static messages
-        return this._playStopAudioHybrid(stop, isLastStop, isFirstStop);
-      } else {
-        if (this.audioPlayer) {
-          return this.audioPlayer.play(this.getStopAudioUrl(stop), isLastStop, isFirstStop, stop);
-        }
+    // Adapter: resolve ONE cue. All knowledge of Audio/cache/speechSynthesis
+    // stays here; the announcement module only sequences cues.
+    async _playOneCue(cue) {
+      if (cue.type === 'beep') return this.playBeep(880, 150);
+      if (cue.type === 'text') return this.ttsSpeak(cue.value);
+      if (cue.type === 'url') {
+        // ponytail: empty url means a hybrid city without audioBaseUrl —
+        // old code skipped the static messages then; keep skipping rather
+        // than handing the player an empty src.
+        if (!cue.value) return;
+        return this._playUrl(cue.value);
       }
     },
 
-    async _playStopAudioTTS(stop, isLastStop = false, isFirstStop = false) {
-      const stopName = stop?.stop_name || '';
-      const isOnDemand = Boolean(stop?.is_on_demand);
-
-      if (isFirstStop) {
-        await this.playBeep(880, 150);
-      }
-
-      await this.ttsSpeak(stopName);
-
-      if (isOnDemand) {
-        await this.ttsSpeak('Przystanek na żądanie');
-      }
-
-      if (isLastStop) {
-        await this.ttsSpeak('Koniec trasy');
-      }
-    },
-
-    // TTS for stop name, recordings for static messages (on-demand, last stop, first stop chime)
-    async _playStopAudioHybrid(stop, isLastStop = false, isFirstStop = false) {
-      const isOnDemand = Boolean(stop?.is_on_demand);
-      const baseUrl = this.currentCityConfig?.audioBaseUrl;
-      const playRecording = async (fileName) => {
-        if (!baseUrl || !this.audioPlayer) return;
-        const url = `${baseUrl}${encodeURIComponent(fileName)}`;
-        await this.audioPlayer.play(url, false, false, null);
-      };
-
-      if (isFirstStop) {
-        await playRecording('KBING!.mp3');
-      }
-
-await this.ttsSpeak(stop?.stop_name || '');
-
-      if (isOnDemand) {
-        await playRecording('KZADAN.mp3');
-      }
-
-      if (isLastStop) {
-        await playRecording('KONCTR.mp3');
-      }
+    _playUrl(url, stop = null) {
+      if (!this.audioPlayer) return;
+      return this.audioPlayer.play(url, stop);
     },
 
     initAudioPlayer() {
@@ -174,7 +135,7 @@ await this.ttsSpeak(stop?.stop_name || '');
         isLoading: false,
         playbackToken: 0,
 
-        async play(url, isLastStop = false, isFirstStop = false, stop = null) {
+        async play(url) {
           const playToken = ++this.playbackToken;
 
           if (this.currentAudio) {
@@ -183,12 +144,12 @@ await this.ttsSpeak(stop?.stop_name || '');
           }
 
           if (this.isLoading) {
+            // ponytail: 100 ms busy-poll while the first recording buffers;
+            // upgrade path = chain onto the cache-miss promise instead of polling.
             await new Promise(resolve => setTimeout(resolve, 100));
             if (playToken !== this.playbackToken) return;
-            return this.play(url, isLastStop, isFirstStop, stop);
+            return this.play(url);
           }
-
-          const isOnDemandStop = Boolean(stop?.is_on_demand);
 
           try {
             const getOrCreateAudio = (audioUrl) => {
@@ -246,26 +207,7 @@ await this.ttsSpeak(stop?.stop_name || '');
               });
             };
 
-            const audioQueue = [];
-
-            if (isFirstStop) {
-              audioQueue.push(app.getVoiceAnnouncementUrl('KBING!.mp3'));
-            }
-
-            audioQueue.push(url);
-
-            if (isOnDemandStop) {
-              audioQueue.push(app.getVoiceAnnouncementUrl('KZADAN.mp3'));
-            }
-
-            if (isLastStop) {
-              audioQueue.push(app.getVoiceAnnouncementUrl('KONCTR.mp3'));
-            }
-
-            for (const audioUrl of audioQueue) {
-              if (playToken !== this.playbackToken) break;
-              await playAudio(audioUrl);
-            }
+            await playAudio(url);
           } catch (error) {
             if (error?.name !== 'AbortError') {
               this.isLoading = false;
@@ -274,6 +216,23 @@ await this.ttsSpeak(stop?.stop_name || '');
           }
         }
       };
+
+      // The seam-owner: cue sequence + pre-emption. audio.js only satisfies
+      // its playOne adapter (same seam shape as ride-core vs ride.js).
+      //
+      // ponytail: playback is deliberately split in two — THIS module decides
+      // which cues follow which (token #1: "stop reading the old queue"),
+      // while audioPlayer below (playbackToken, audioCache, 100ms retry,
+      // volume) owns how ONE cue sounds and is cut short (token #2). The
+      // original plan was to absorb audioPlayer here too; left as a two-stage
+      // rollout. Merge them into this module only if a bug needs both tokens
+      // visible in one file — otherwise this split stays.
+      this.announcer = createAnnouncer({
+        getSource: () => this.currentCityConfig?.audioSource || 'tts',
+        urlFor: (fileName) => this.getVoiceAnnouncementUrl(fileName),
+        audioIdFor: (stop) => stop?.audio_id || stop?.stop_code || stop?.stop_id,
+        playOne: (c) => this._playOneCue(c),
+      });
     }
   };
 }

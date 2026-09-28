@@ -145,7 +145,7 @@ export function createMapOpsMixin() {
         tooltip.options.isFirstStop = isFirstStop;
         tooltip.options.stopData = stop;
 
-        marker.on('click', () => this.playStopAudio(stop, isLastStop, isFirstStop));
+        marker.on('click', () => this.playStopAudio(stop, { first: isFirstStop, last: isLastStop }));
 
         this.currentLabels.push({
           lat: stopLat, lng: stopLng,
