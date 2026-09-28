@@ -28,3 +28,6 @@ Czysta matematyka jazdy, niezależna od mapy i audio:
 
 ## Ślad przejazdu (Trail)
 Linia rysowana na mapie za poruszającym się pojazdem, od początku trasy do aktualnej pozycji.
+
+## Zapowiedź przystanku (Stop announcement)
+Komunikat dźwiękowy o dojechaniu do Przystanku oraz o stałych zdarzeniach trasy: sygnał na pierwszym przystanku, nazwa przystanku, informacja „na żądanie", komunikat końca trasy. Zaprogramowana sekwencja — każda nowa Zapowiedź przerywa poprzednią.

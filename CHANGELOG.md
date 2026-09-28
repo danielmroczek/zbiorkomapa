@@ -2,6 +2,10 @@
 
 Wszystkie istotne zmiany w projekcie Zbiorkomapa, pogrupowane według daty.
 
+## 2026-09-28
+
+- Ogłoszenia przystanków złożone w jeden moduł (`stop-announcement.js`); naprawiono pomijanie komunikatów „na żądanie"/„koniec trasy" w miastach hybrydowych bez bazy nagrań.
+
 ## 2026-09-27
 
 - Strzałki nie przesuwają już mapy (wyłączono klawiaturę Leafleta) — niezależnie od fokusu służą wyłącznie do nawigacji linii i sterowania jazdą.
