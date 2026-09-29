@@ -2,6 +2,10 @@
 
 Wszystkie istotne zmiany w projekcie Zbiorkomapa, pogrupowane według daty.
 
+## 2026-09-29
+
+- Kliknięcie przystanku natychmiast przerywa dowolnie grający dźwięk (nagranie lub lektor TTS) — zamiast nakładać się na siebie lub kolejkować.
+
 ## 2026-09-28
 
 - Ogłoszenia przystanków złożone w jeden moduł (`stop-announcement.js`); naprawiono pomijanie komunikatów „na żądanie"/„koniec trasy" w miastach hybrydowych bez bazy nagrań.
