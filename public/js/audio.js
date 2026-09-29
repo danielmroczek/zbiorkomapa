@@ -47,9 +47,19 @@ export function createAudioMixin() {
       });
     },
 
+    // Choke-group: every new cue cuts BOTH audio systems — speechSynthesis
+    // queues instead of interrupting, and the Audio element only reacts to
+    // pause(), so neither reacts to the other on its own.
+    _interruptAll() {
+      speechSynthesis?.cancel();
+      if (this.audioPlayer) this.audioPlayer.cut();
+    },
+
     async ttsSpeak(text) {
       if (!('speechSynthesis' in window)) return;
       text = this._expandTtsText(text);
+
+      this._interruptAll();
 
       const voices = await this.getTTSVoices();
       const utterance = new SpeechSynthesisUtterance(text);
@@ -61,8 +71,11 @@ export function createAudioMixin() {
       if (voice) utterance.voice = voice;
 
       return new Promise((resolve) => {
+        // oncancel is not in the Web Speech API spec but Chrome fires it on
+        // cancel(); onend/onerror already cover the spec-conformant path.
         utterance.onend = () => resolve();
         utterance.onerror = () => resolve();
+        utterance.oncancel = () => resolve();
         speechSynthesis.speak(utterance);
       });
     },
@@ -121,9 +134,10 @@ export function createAudioMixin() {
       }
     },
 
-    _playUrl(url, stop = null) {
+    _playUrl(url) {
+      this._interruptAll();
       if (!this.audioPlayer) return;
-      return this.audioPlayer.play(url, stop);
+      return this.audioPlayer.play(url);
     },
 
     initAudioPlayer() {
@@ -134,6 +148,15 @@ export function createAudioMixin() {
         currentAudio: null,
         isLoading: false,
         playbackToken: 0,
+
+        // Choke-group: stop whatever recording is playing/in-flight.
+        cut() {
+          this.playbackToken++; // kill any queued/retrying play() of the old cue
+          if (this.currentAudio) {
+            this.currentAudio.pause();
+            this.currentAudio = null;
+          }
+        },
 
         async play(url) {
           const playToken = ++this.playbackToken;
