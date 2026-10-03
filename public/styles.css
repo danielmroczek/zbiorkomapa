@@ -121,6 +121,25 @@ input:focus-visible {
   }
 }
 
+.badge-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.load-spinner {
+  position: absolute;
+  right: -22px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .route-badge {
   display: inline-flex;
   align-items: center;
