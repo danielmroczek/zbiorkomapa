@@ -1,6 +1,9 @@
 # CHANGELOG
 
-Wszystkie istotne zmiany w projekcie Zbiorkomapa, pogrupowane według daty.
+## 2026-10-03
+
+- Szybkie przelatywanie liniami nie wysyła już żądań dla każdej pośredniej linii: w trakcie ładowania zapamiętywany jest tylko ostatni cel, a kolejne pobranie rusza po zakończeniu bieżącego (jeden slot, zero równoległych fetchy).
+- Obok plakietki linii pojawia się spinner ładowania (ikona lucide `loader-circle` przez CDN); wybór linii pozostaje dostępny podczas ładowania.
 
 ## 2026-09-29
 
