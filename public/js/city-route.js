@@ -53,6 +53,8 @@ export function createCityRouteMixin() {
     directions: [],
     selectedDirectionIdx: 0,
     currentDirection: null,
+    routeInFlight: false,
+    routeLoadNext: null,
 
     async loadCitiesConfig() {
       try {
@@ -155,6 +157,8 @@ export function createCityRouteMixin() {
     // After choosing from a combobox, drop focus so Space (the ride toggle)
     // never re-opens the dropdown instead of starting/pausing the ride.
     blurSelect() {
+      // Zone guard: no DOM in Node tests.
+      if (typeof document === 'undefined') return;
       const el = document.activeElement;
       if (el && (el.tagName === 'SELECT' || el.tagName === 'INPUT')) el.blur();
     },
@@ -174,9 +178,47 @@ export function createCityRouteMixin() {
       const routeMeta = this.routes.find(r => r.route_id === this.selectedRouteId);
       if (!routeMeta) return;
 
+      const loaded = await this._loadRouteData(this.selectedRouteId);
+      if (!loaded) return;
+      await this.onDirectionChange();
+    },
+
+    // ponytail: one-slot loader instead of per-request aborts — a target
+    // arriving mid-load waits in routeLoadNext (newer overwrites older) and
+    // starts when the current fetch finishes, so fast scrubbing produces few
+    // sequential fetches and never parallel ones. Files are small static
+    // JSON; if a route file ever becomes expensive to serve, upgrade path is
+    // AbortController here.
+    // Injectable seam: fetchRoute can be replaced in tests.
+    // Badge + panel header driven by a route's meta (live flip + rollback).
+    _setBadgeLook(routeMeta) {
+      const look = badgeLook(routeMeta, this.hexToRgb);
+      const { emoji, title } = panelTitleFor(routeMeta, this.currentCityName);
+      this.shortName = routeMeta.short_name;
+      this.routeTypeEmoji = emoji;
+      this.badgeClass = look.badgeClass;
+      this.badgeStyle = look.badgeStyle;
+      this.panelTitle = title;
+    },
+
+    async _loadRouteData(routeId) {
+      if (this.routeInFlight) {
+        this.routeLoadNext = routeId;
+        return false;
+      }
+      this.routeInFlight = true;
+
+      const routeMeta = this.routes.find(r => r.route_id === routeId);
+      // Live badge flip: show the requested line immediately (same look as a
+      // full load), matching the arrow-key preview.
+      if (routeMeta) this._setBadgeLook(routeMeta);
+
+      let ok = false;
       try {
-        const response = await fetch(`./dist/${this.currentCitySlug}/${this.selectedRouteId}.json`);
-        const routeData = await response.json();
+        const routeData = await this.fetchRoute(routeId);
+        // route_id isn't in the dist JSON; stamp it so rollback paths know
+        // which route the map currently shows.
+        routeData.route_id = routeId;
         this.currentRoute = routeData;
         const dirs = routeData.directions;
         const lastStopCounts = new Map();
@@ -192,23 +234,47 @@ export function createCityRouteMixin() {
             : { ...d, directionLabel: `→ ${d.last_stop.toUpperCase()}` };
         });
 
-        const shortName = routeMeta.short_name;
-        const look = badgeLook(routeMeta, this.hexToRgb);
-        this.badgeClass = look.badgeClass;
-        this.badgeStyle = look.badgeStyle;
-        const { emoji, title } = panelTitleFor(routeMeta, this.currentCityName);
-        this.routeTypeEmoji = emoji;
-        this.panelTitle = title;
-        this.shortName = shortName;
-        const savedDir = localStorage.getItem(`lastDirection_${this.selectedRouteId}`);
+        const savedDir = localStorage.getItem(`lastDirection_${routeId}`);
         const dirIdx = savedDir ? parseInt(savedDir, 10) : 0;
         this.selectedDirectionIdx = (dirIdx >= 0 && dirIdx < this.directions.length) ? dirIdx : 0;
 
-        localStorage.setItem(`lastRoute_${this.currentCitySlug}`, this.selectedRouteId);
-        await this.onDirectionChange();
+        ok = true;
       } catch (error) {
-        console.error(`Błąd ładowania danych dla linii ${this.selectedRouteId}:`, error);
+        console.error(`Błąd ładowania danych dla linii ${routeId}:`, error);
+        // Rollback badge to what the map still shows (selectedRouteId may have
+        // moved on to a newer pick, so track currentRoute.route_id), or to the
+        // empty state when nothing was ever loaded.
+        if (this.currentRoute) {
+          const shown = this.routes.find(r => r.route_id === this.currentRoute.route_id);
+          if (shown) this._setBadgeLook(shown);
+        } else {
+          this.shortName = '-';
+          this.badgeClass = '';
+          this.badgeStyle = '';
+          this.panelTitle = '';
+        }
+      } finally {
+        this.routeInFlight = false;
+        const next = this.routeLoadNext;
+        this.routeLoadNext = null;
+        if (ok) {
+          localStorage.setItem(`lastRoute_${this.currentCitySlug}`, routeId);
+        }
+        if (next) {
+          this.selectedRouteId = next;
+          void this.onRouteChange();
+        }
       }
+      return ok;
+    },
+
+    // ponytail: real fetch seam — tests replace this; prod asks the static dist folder.
+    fetchRoute(routeId) {
+      return fetch(`./dist/${this.currentCitySlug}/${routeId}.json`)
+        .then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        });
     },
 
     async onDirectionChange() {
