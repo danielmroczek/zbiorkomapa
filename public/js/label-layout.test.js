@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  labelBox, overlapArea, routeSegmentBoxes, bestDirections, flipClockwise, DEFAULT_WEIGHTS
+  labelBox, overlapArea, routeSegmentBoxes, bestDirections, DEFAULT_WEIGHTS
 } from './label-layout.js';
 
 const LBL = (x, y, w, h, dir) => ({ x, y, w, h, dir });
@@ -95,16 +95,6 @@ describe('bestDirections', () => {
 
   it('empty input → empty output', () => {
     expect(bestDirections([], { routeBoxes: NO_ROUTE })).toEqual([]);
-  });
-});
-
-describe('flipClockwise', () => {
-  it('cycles right→bottom→left→top→right and rejects unknown dirs', () => {
-    expect(flipClockwise('right')).toBe('bottom');
-    expect(flipClockwise('bottom')).toBe('left');
-    expect(flipClockwise('left')).toBe('top');
-    expect(flipClockwise('top')).toBe('right');
-    expect(flipClockwise('diag')).toBeNull();
   });
 });
 

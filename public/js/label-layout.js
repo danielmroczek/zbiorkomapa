@@ -19,10 +19,6 @@ export const DEFAULT_OFFSETS = {
 const ARROW_SIZE = 4; // tooltip pointer length sitting between point and box
 const EPS = 1e-9;
 
-export function flipClockwise(dir) {
-  return { 'top': 'right', 'right': 'bottom', 'bottom': 'left', 'left': 'top' }[dir] || null;
-}
-
 // Box of a tooltip of size dims anchored at `point` facing `dir`.
 // The pointer (arrow) side is between the point and the box.
 export function labelBox(point, dir, dims, offset) {

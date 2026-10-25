@@ -1,6 +1,6 @@
 import * as L from 'leaflet';
 
-import { bestDirections, routeSegmentBoxes, DEFAULT_OFFSETS, flipClockwise } from './label-layout.js';
+import { bestDirections, routeSegmentBoxes, DEFAULT_OFFSETS } from './label-layout.js';
 
 // Map operations + label optimization mixin
 
@@ -135,12 +135,6 @@ export function createMapOpsMixin() {
         const zoneDotContent = () => (this.showStopLabels ? zoneLetter : String(stopNumber));
 
         marker.on('click', () => this.playStopAudio(stop, { first: isFirstStop, last: isLastStop }));
-        // Right-click on the dot also flips the label (documented in help).
-        marker.on('contextmenu', (e) => {
-          L.DomEvent.stopPropagation(e);
-          L.DomEvent.preventDefault(e);
-          this.flipTooltip(marker);
-        });
 
         if (this.showStopLabels) {
           marker.bindTooltip(this.renderLabelTooltip(stopNumber, stopNameClean, 'right', stop));
@@ -152,12 +146,6 @@ export function createMapOpsMixin() {
               // Left click on the label reads the stop (help: "Klik na etykietę").
               L.DomEvent.stopPropagation(event.originalEvent || event);
               this.playStopAudio(stop, { first: isFirstStop, last: isLastStop });
-            });
-            tooltip.addEventListener('contextmenu', (event) => {
-              // Right click on the label itself flips it (help: "Prawy klik").
-              L.DomEvent.stopPropagation(event.originalEvent || event);
-              L.DomEvent.preventDefault(event.originalEvent || event);
-              this.flipTooltip(marker);
             });
           });
         }
@@ -199,18 +187,6 @@ export function createMapOpsMixin() {
         }
         if (label.zoneDotEl) label.zoneDotEl.textContent = label.zoneDotContent();
       }
-    },
-
-    flipTooltip(marker) {
-      if (!this.showStopLabels) return;
-      const labelData = this.currentLabels.find(l => l.marker === marker);
-      if (!labelData) return;
-
-      const newDir = flipClockwise(labelData.direction);
-      if (!newDir) return;
-
-      labelData.direction = newDir;
-      this.rebindLabelTooltips();
     },
 
     renderLabelTooltip(stopNumber, stopName, direction, stopData = null) {

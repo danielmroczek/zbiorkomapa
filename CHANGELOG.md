@@ -4,7 +4,7 @@
 
 - Nowy algorytm rozmieszczania etykiet przystanków: priorytetem jest brak nakładania etykiet na siebie, potem zasłanianie linii trasy, a na końcu jak najmniejszy wspólny bounding-box (np. pionowa trasa przy lewej krawędzi → etykiety po prawej). Remis kosztu pozostawia dotychczasowy kierunek — brak migotania przy zoomie.
 - Etykiety przeniesione do czystego modułu `label-layout.js` (bez Leaflet/DOM) z testami jednostkowymi.
-- Klik na etykietę odtwarza zapowiedź przystanku, prawy klik na etykietę lub kropkę obraca etykietę (funkcja była opisana w pomocy, ale brakowało obsługi).
+- Klik na etykietę odtwarza zapowiedź przystanku.
 - Konfiguracja: checkbox „Pokaż etykiety przystanków" (zapamiętywany); kropki przystanków zostają widoczne.
 - Poprawka: zmiana rozmiaru czcionki etykiet od razu przelicza ich pozycję względem punktów — Leaflet sam nie przemieszcza permanentnych tooltipów po zmianie ich rozmiaru CSS; tooltipy są teraz ponownie dowiązywane.
 - Przy ukrytych etykietach kropka przystanku pokazuje zamiast litery strefy numer przystanku (w kolorze strefy).
