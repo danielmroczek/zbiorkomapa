@@ -6,7 +6,7 @@ export function createSettingsMixin() {
       const fontSize = localStorage.getItem('stopLabelFontSize');
       if (fontSize) {
         this.fontSize = parseInt(fontSize, 10);
-        this.setStopLabelFontSize(fontSize);
+        this.setStopLabelFontSize(`${this.fontSize}px`);
       }
       const pos = localStorage.getItem('printPosition');
       if (pos) this.printPosition = pos;
@@ -15,6 +15,10 @@ export function createSettingsMixin() {
       if (localStorage.getItem('readStopNamesEnabled') === 'false') this.readStopNamesEnabled = false;
       const savedSpeed = localStorage.getItem('rideSpeed');
       if (savedSpeed === 'slow' || savedSpeed === 'fast') this.rideSpeed = savedSpeed;
+      if (localStorage.getItem('showStopLabels') === 'false') {
+        this.showStopLabels = false;
+        this.setShowStopLabels(false);
+      }
     },
 
     setStopLabelFontSize(size) {
@@ -22,9 +26,17 @@ export function createSettingsMixin() {
 
       if (this.map && this.currentLabels.length > 0) {
         window.requestAnimationFrame(() => {
+          // Leaflet won't reposition existing permanent tooltips after their
+          // CSS font-size changes — rebind them, then re-run the layout.
+          this.rebindLabelTooltips();
           this.optimizeLabelDirections();
         });
       }
+    },
+
+    onShowStopLabelsChange() {
+      this.setShowStopLabels(this.showStopLabels);
+      localStorage.setItem('showStopLabels', this.showStopLabels ? 'true' : 'false');
     },
 
     onFontSizeChange() {

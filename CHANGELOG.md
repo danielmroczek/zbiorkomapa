@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 2026-10-25
+
+- Nowy algorytm rozmieszczania etykiet przystanków: priorytetem jest brak nakładania etykiet na siebie, potem zasłanianie linii trasy, a na końcu jak najmniejszy wspólny bounding-box (np. pionowa trasa przy lewej krawędzi → etykiety po prawej). Remis kosztu pozostawia dotychczasowy kierunek — brak migotania przy zoomie.
+- Etykiety przeniesione do czystego modułu `label-layout.js` (bez Leaflet/DOM) z testami jednostkowymi.
+- Klik na etykietę odtwarza zapowiedź przystanku, prawy klik na etykietę lub kropkę obraca etykietę (funkcja była opisana w pomocy, ale brakowało obsługi).
+- Konfiguracja: checkbox „Pokaż etykiety przystanków" (zapamiętywany); kropki przystanków zostają widoczne.
+- Poprawka: zmiana rozmiaru czcionki etykiet od razu przelicza ich pozycję względem punktów — Leaflet sam nie przemieszcza permanentnych tooltipów po zmianie ich rozmiaru CSS; tooltipy są teraz ponownie dowiązywane.
+- Przy ukrytych etykietach kropka przystanku pokazuje zamiast litery strefy numer przystanku (w kolorze strefy).
+- Poprawka: linia trasy i przejazd rysowały się w dziwnych miejscach lub wcale — mapa nie wykrywa samoczynnie zmiany rozmiaru kontenera przy przełączaniu tras (`invalidateSize` przed rysowaniem), a animowany zoom na starcie przejazdu ścigał się z pętlą animacji pojazdu (zoom ustawiany synchronicznie).
+- Poprawka: klik na etykietę wywalał listener (`tooltip` poza zasięgiem) — handler `tooltipopen` pobiera teraz tooltip z eventu.
+
 ## 2026-10-03
 
 - Szybkie przelatywanie liniami nie wysyła już żądań dla każdej pośredniej linii: w trakcie ładowania zapamiętywany jest tylko ostatni cel, a kolejne pobranie rusza po zakończeniu bieżącego (jeden slot, zero równoległych fetchy).

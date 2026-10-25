@@ -14,6 +14,7 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 - podgląd długości trasy i liczby przystanków
 - odtwarzanie nagrań głosowych dla przystanków (miasta z nagraniami) lub TTS (miasta bez nagrań)
 - **przejazd automatyczny** — animacja pojazdu wzdłuż trasy z ogłoszeniami głosowymi na przystankach (Spacja lub przycisk ▶)
+- inteligentne rozmieszczanie etykiet przystanków (bez nakładania się i zasłaniania trasy); przełącznik w Konfiguracji, klik = zapowiedź, prawy klik = obrót etykiety
 - gotowy układ do druku i prezentacji
 
 ## Dodawanie nowego miasta

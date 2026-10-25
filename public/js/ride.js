@@ -81,6 +81,11 @@ export function createRideMixin() {
         const routeType = this.currentRoute?.type;
         const vehicleEmoji = routeType === 'TRAM' ? '🚋' : '🚌';
 
+        // A route switch can resize the flex #map container; Leaflet does not
+        // notice on its own, so re-measure before reading getSize/zoom math
+        // below (stale size => vehicle/trail drawn at wrong pixels).
+        this.map.invalidateSize();
+
         const ride = createRide(turf);
         this.ride.rideCore = ride;
 
@@ -107,7 +112,11 @@ export function createRideMixin() {
           lineJoin: 'round'
         }).addTo(this.map);
 
-        this.map.setView(startCoord, this._computeRideZoom(startView.avgSegDistKm), { animate: true });
+        // Sync setVIEW: the rAF loop below pans every frame; an animated
+        // setView would run its zoom fly concurrently with those pans, and
+        // Leaflet renders layers at stale transforms mid-fly — vehicle/trail
+        // appear misplaced or not at all until the animation settles.
+        this.map.setView(startCoord, this._computeRideZoom(startView.avgSegDistKm), { animate: false });
 
         if (this.engineSoundEnabled) {
           const engineType = routeType === 'TRAM' ? 'tram' : 'bus';

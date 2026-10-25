@@ -118,6 +118,13 @@
             <span>Pokaż ramkę na ekranie</span>
           </label>
         </div>
+        <div class="control-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="stop-labels-checkbox" x-model="showStopLabels"
+              @change="onShowStopLabelsChange()">
+            <span>Pokaż etykiety przystanków</span>
+          </label>
+        </div>
         <div class="control-group" x-show="currentDirection">
           <label class="checkbox-label">
             <input type="checkbox" x-model="engineSoundEnabled" @change="onEngineSoundChange()">
