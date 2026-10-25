@@ -40,12 +40,12 @@ function parseArgs() {
 async function downloadCity(cityConfig) {
   const slug = slugify(cityConfig.name);
   const cityDataDir = path.join(projectRoot, "data", slug);
-  const zipPath = path.join(cityDataDir, "gtfs.zip");
+  const tmpDir = `${cityDataDir}.tmp-${process.pid}`;
+  const zipPath = path.join(tmpDir, "gtfs.zip");
 
-  if (!fs.existsSync(cityDataDir)) {
-    fs.mkdirSync(cityDataDir, { recursive: true });
-    console.log(`Utworzono katalog: ${cityDataDir}`);
-  }
+  // Sprzątamy ewentualne pozostałości po poprzednich nieudanych próbach.
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.mkdirSync(tmpDir, { recursive: true });
 
   console.log(`[${cityConfig.name}] Pobieram GTFS z ${cityConfig.gtfsUrl}...`);
 
@@ -69,8 +69,23 @@ async function downloadCity(cityConfig) {
 
   await fs
     .createReadStream(zipPath)
-    .pipe(unzipper.Extract({ path: cityDataDir }))
+    .pipe(unzipper.Extract({ path: tmpDir }))
     .promise();
+
+  // Podmieniamy dopiero po pełnym sukcesie — nieudany download nie
+  // zostawia starych plików GTFS, którym processor by zaufał.
+  // ponytail: Windows potrafi chwilowo blokować katalog (indekser/AV) —
+  // 3 retry z 200 ms odstępu; jeśli to zawiedzie, upgrade path to kopiowanie.
+  fs.rmSync(cityDataDir, { recursive: true, force: true });
+  for (let attempt = 1; ; attempt++) {
+    try {
+      fs.renameSync(tmpDir, cityDataDir);
+      break;
+    } catch (err) {
+      if (attempt === 3) throw err;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
 
   console.log(`[${cityConfig.name}] Gotowe: pliki GTFS w data/${slug}/`);
 }
@@ -97,13 +112,13 @@ async function main() {
       try {
         await downloadCity(city);
       } catch (err) {
-        console.error(`[${city.name}] Błąd:`, err.message);
-        process.exitCode = 1;
+        console.warn(
+          `[${city.name}] Ostrzeżenie: pomijam miasto (${err.message})`,
+        );
       }
     }
   } catch (err) {
-    console.error("Błąd:", err);
-    process.exitCode = 1;
+    console.warn("Ostrzeżenie:", err.message);
   }
 }
 

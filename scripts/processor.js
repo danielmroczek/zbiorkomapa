@@ -175,8 +175,7 @@ async function processCity(cityConfig, { force }) {
   }
 
   if (!fs.existsSync(dataDir)) {
-    console.error(`  Brak katalogu danych GTFS: ${dataDir}`);
-    return;
+    throw new Error(`Brak katalogu danych GTFS: ${dataDir}`);
   }
 
   // node-gtfs config, generated in-memory (no stray config file).
@@ -318,6 +317,7 @@ async function main() {
   try {
     const { cityFilter, force } = parseArgs();
     const config = loadCitiesConfig();
+    const processed = [];
 
     let cities = config.cities;
     if (cityFilter) {
@@ -335,9 +335,9 @@ async function main() {
     for (const city of cities) {
       try {
         await processCity(city, { force });
+        processed.push(slugify(city.name));
       } catch (err) {
         console.error(`[${city.name}] Błąd przetwarzania:`, err.message);
-        process.exitCode = 1;
       }
     }
 
@@ -346,17 +346,19 @@ async function main() {
     if (!fs.existsSync(distDir)) {
       fs.mkdirSync(distDir, { recursive: true });
     }
-    const frontendCities = config.cities.map((c) => {
-      const entry = {
-        name: c.name,
-        slug: slugify(c.name),
-        audioSource: c.audioSource || "tts",
-        ttsLang: c.ttsLang || "pl-PL",
-      };
-      if (c.audioBaseUrl) entry.audioBaseUrl = c.audioBaseUrl;
-      if (c.audioVolume != null) entry.audioVolume = c.audioVolume;
-      return entry;
-    });
+    const frontendCities = config.cities
+      .filter((c) => processed.includes(slugify(c.name)))
+      .map((c) => {
+        const entry = {
+          name: c.name,
+          slug: slugify(c.name),
+          audioSource: c.audioSource || "tts",
+          ttsLang: c.ttsLang || "pl-PL",
+        };
+          if (c.audioBaseUrl) entry.audioBaseUrl = c.audioBaseUrl;
+          if (c.audioVolume != null) entry.audioVolume = c.audioVolume;
+          return entry;
+      });
     fs.writeFileSync(
       path.join(distDir, "cities.json"),
       JSON.stringify(frontendCities, null, 2),
