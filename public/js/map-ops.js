@@ -116,10 +116,15 @@ export function createMapOpsMixin() {
         const isLastStop = index === totalStops - 1;
         const zoneLetter = this.getStopZoneLetter(stop);
         const zoneColorVar = this.getStopZoneColorVar(stop);
+        const stopNumber = index + 1;
+
+        // Zone dot shows the zone letter (labels on) or the stop number
+        // (labels hidden — the number is then only readable here).
+        const zoneDotContent = () => (this.showStopLabels ? zoneLetter : String(stopNumber));
 
         const marker = L.marker([stopLat, stopLng], {
           icon: L.divIcon({
-            html: `<div class="stop-zone-marker" style="--zone-color: ${zoneColorVar};">${zoneLetter}</div>`,
+            html: `<div class="stop-zone-marker" style="--zone-color: ${zoneColorVar};">${zoneDotContent()}</div>`,
             className: '',
             iconSize: [18, 18],
             iconAnchor: [9, 9],
@@ -127,12 +132,6 @@ export function createMapOpsMixin() {
           }),
           interactive: true
         }).addTo(this.map);
-
-        const stopNumber = index + 1;
-
-        // Zone dot shows the zone letter (labels on) or the stop number
-        // (labels hidden — the number is then only readable here).
-        const zoneDotContent = () => (this.showStopLabels ? zoneLetter : String(stopNumber));
 
         marker.on('click', () => this.playStopAudio(stop, { first: isFirstStop, last: isLastStop }));
 

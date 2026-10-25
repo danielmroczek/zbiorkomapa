@@ -8,6 +8,7 @@
 - Konfiguracja: checkbox „Pokaż etykiety przystanków" (zapamiętywany); kropki przystanków zostają widoczne.
 - Poprawka: zmiana rozmiaru czcionki etykiet od razu przelicza ich pozycję względem punktów — Leaflet sam nie przemieszcza permanentnych tooltipów po zmianie ich rozmiaru CSS; tooltipy są teraz ponownie dowiązywane.
 - Przy ukrytych etykietach kropka przystanku pokazuje zamiast litery strefy numer przystanku (w kolorze strefy).
+- Poprawka: przy włączonym ukrywaniu etykiet kropki pokazywały literę strefy zamiast numeru przystanku po odświeżeniu strony (numer pojawiał się dopiero po przełączeniu checkboxa).
 - Poprawka: linia trasy i przejazd rysowały się w dziwnych miejscach lub wcale — mapa nie wykrywa samoczynnie zmiany rozmiaru kontenera przy przełączaniu tras (`invalidateSize` przed rysowaniem), a animowany zoom na starcie przejazdu ścigał się z pętlą animacji pojazdu (zoom ustawiany synchronicznie).
 - Poprawka: klik na etykietę wywalał listener (`tooltip` poza zasięgiem) — handler `tooltipopen` pobiera teraz tooltip z eventu.
 
