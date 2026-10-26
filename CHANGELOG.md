@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 2026-10-26
+- Poprawka algorytmu etykiet: koszt powiększania bounding-boxa liczony jest względem stałych granic trasy (zamiast rosnącego bboxa z już umieszczonymi etykietami) — wcześniejsza etykieta skierowana na zewnątrz nie „subwencjonowała" już kosztu kolejnych; np. linia 486: początkowe przystanki rysujące się na prawo od pionowego odcinka trasy powiększały kompozycję niesłusznie.
+- Korekta wagi bounding-boxa w algorytmie etykiet (0.1 → 0.3): przy czcionce 10 etykieta końcowego przystanku (np. Siekierki Wielkie/Kościół, linia 486) wolała wystawać w dół poza trasę (koszt bboxa znikomy) niż przykleić się lekko do linii; teraz dłuższe wystawanie kompozycji poza trasę przegrywa z lekkim ocieraniem o linię przy własnym przystanku.
+
 ## 2026-10-25
 
 - Nowy algorytm rozmieszczania etykiet przystanków: priorytetem jest brak nakładania etykiet na siebie, potem zasłanianie linii trasy, a na końcu jak najmniejszy wspólny bounding-box (np. pionowa trasa przy lewej krawędzi → etykiety po prawej). Remis kosztu pozostawia dotychczasowy kierunek — brak migotania przy zoomie.

@@ -86,11 +86,44 @@ describe('bestDirections', () => {
     expect(out[0]).toBe('right');
   });
 
+  it('bbox cost stays on the route bounds — an early outward label must not subsidise the rest', () => {
+    // L-shaped route (wide top arm + right vertical): stop 1 sits in the
+    // corner where every direction but 'right' overlaps the route, so it
+    // goes right and pushes the bbox out. Stop 2 sits on the free stem where
+    // 'left' costs 0. With a GROWING bbox baseline stop 2's 'right' would be
+    // free (stop 1 already paid) and win the tie; with the fixed route
+    // bounds 'left' wins outright.
+    const route = [
+      { left: 100, top: 100, right: 800, bottom: 130 },
+      { left: 790, top: 130, right: 802, bottom: 500 }
+    ];
+    const out = bestDirections([
+      LBL(795, 135, 150, 12, 'right'), // corner: only 'right' avoids the route
+      LBL(795, 300, 150, 12, 'right')  // free stem: 'left' is strictly cheaper
+    ], { routeBoxes: route });
+    expect(out[0]).toBe('right');
+    expect(out[1]).toBe('left');
+  });
+
   it('ties keep the incoming direction (stable re-runs)', () => {
     // Same all-zero setup as above, single label arriving as 'left'.
     const scene = [{ left: 0, top: 0, right: 600, bottom: 600 }];
     const out = bestDirections([LBL(300, 300, 60, 12, 'left')], { routeBoxes: scene });
     expect(out).toEqual(['left']);
+  });
+
+  it('at a route endpoint, growing the bbox far past the line loses to grazing it (486 regression)', () => {
+    // Route ends in a point; the stop sits at the end. 'bottom' is route-free
+    // but stretches the composition ~100 px below the route; 'left' only
+    // grazes the line's end segment. With bbox weight 0.1 bottom won and the
+    // whole route rendered with the first label hanging off the bottom.
+    // Real route spans the viewport (bb ≈ 113..850 × 63..644) — include far
+    // points so the bbox baseline is the route's full extent, not 3 points.
+    const route = routeSegmentBoxes([
+      { x: 848, y: 642 }, { x: 842, y: 630 }, { x: 810, y: 440 }, { x: 790, y: 120 }, { x: 113, y: 64 }
+    ], 2.5);
+    const out = bestDirections([LBL(852, 642, 159, 16, 'bottom')], { routeBoxes: route });
+    expect(out[0]).toBe('left');
   });
 
   it('empty input → empty output', () => {

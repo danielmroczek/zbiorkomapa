@@ -5,11 +5,14 @@
 //   label↔label overlap + label↔route overlap + offscreen area + bbox growth.
 // Product priority: 1) labels don't overlap each other, 2) then they don't
 // cover the route line, 3) then route+labels keep the smallest bounding box.
-// Weight ranges (overlaps in px², bbox growth in px) make later terms only
-// break near-ties. Exact cost ties keep the label's current direction, so
+// Overlap terms are px², bbox growth is summed per-axis px — the bbox weight
+// is low enough that a small route graze (~tens of px²) still loses to real
+// bbox growth (~hundreds of px), but high enough that a label extending the
+// composition well past the route loses to grazing the line right next to
+// its own stop. Exact cost ties keep the label's current direction, so
 // re-running on the same view (zoomend/resize) never flaps.
 
-export const DEFAULT_WEIGHTS = { label: 1, route: 0.5, offscreen: 0.5, bbox: 0.1 };
+export const DEFAULT_WEIGHTS = { label: 1, route: 0.5, offscreen: 0.5, bbox: 0.3 };
 // Preference order on near-ties: right is the historical default, then up,
 // down, left — matches the pre-algorithm behaviour for isolated stops.
 export const DEFAULT_DIR_ORDER = ['right', 'top', 'bottom', 'left'];
@@ -93,13 +96,15 @@ export function bestDirections(labels, opts = {}) {
   const routeBoxes = opts.routeBoxes || [];
   const viewport = opts.viewport;
 
-  // Bounding box the composition is measured against: the route, or — when no
-  // route boxes are given — the stop points themselves.
-  const resetBb = () => routeBoxes.length
+  // Bounding box the bbox cost is measured against: the route alone (or the
+  // stop points when no route boxes are given). Fixed for the whole run — a
+  // growing bb (route ∪ placed labels) would let an early expensive choice
+  // (e.g. first label pointing outward) absorb the growth, making later
+  // outward labels free and locking the whole composition off-centre.
+  const bb = routeBoxes.length
     ? routeBoxes.reduce(mergeBox)
     : labels.reduce((acc, l) => mergeBox(acc, { left: l.x, right: l.x, top: l.y, bottom: l.y }),
       { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
-  let bb = resetBb();
 
   // Pass 1: greedy along-route placement (each label sees only earlier ones).
   const boxes = [];
@@ -108,13 +113,7 @@ export function bestDirections(labels, opts = {}) {
     const r = cheapest(i, boxes.filter((_, j) => j < i));
     boxes.push(r.box);
     out.push(r.dir);
-    bb = mergeBox(bb, r.box);
   }
-  // Recompute from scratch so pass 2 also has a valid baseline (null would
-  // break growSum). Pass 2 changes directions less often than it keeps them,
-  // so a stale-large bb quirk is not worth more bookkeeping.
-  bb = resetBb();
-  for (let i = 0; i < n; i++) bb = mergeBox(bb, boxes[i]);
   // Pass 2: one refinement sweep — now every label also sees later ones, so
   // the first labels can correct for what pass 1 crowded around them.
   for (let i = 0; i < n; i++) {
