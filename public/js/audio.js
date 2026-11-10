@@ -23,6 +23,8 @@ export function createAudioMixin() {
       'os.': 'osiedle', // Eg. "Os. Radosne"
       'pl.': 'plac', // Eg. "Jerzykowo/pl. Piastowski"
       'i armii': 'pierwszej armii', //Eg. "I Armii Wojska Polsk"
+      'pawła ii': 'pawła drugiego', // Eg. "Jana Pawła II"
+      'jana iii': 'jana trzeciego', // Eg. "Jana III Sobieskiego"
       'i': 'jeden',
       'ii': 'dwa',
       'iii': 'trzy'
