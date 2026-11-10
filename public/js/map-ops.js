@@ -136,17 +136,13 @@ export function createMapOpsMixin() {
         marker.on('click', () => this.playStopAudio(stop, { first: isFirstStop, last: isLastStop }));
 
         if (this.showStopLabels) {
+          // ponytail: no label click handler — an interactive tooltip is an
+          // event child of its marker, so a label click already fires marker
+          // 'click' once (a second listener here read every stop twice).
+          // Ceiling: depends on Leaflet's tooltip event-parenting plus
+          // interactive: true in createStopLabelTooltip; drop either and
+          // label clicks go mute — re-add a handler here if that happens.
           marker.bindTooltip(this.renderLabelTooltip(stopNumber, stopNameClean, 'right', stop));
-
-          marker.on('tooltipopen', (e) => {
-            const tooltip = e.tooltip;
-            if (!tooltip) return;
-            tooltip.addEventListener('click', (event) => {
-              // Left click on the label reads the stop (help: "Klik na etykietę").
-              L.DomEvent.stopPropagation(event.originalEvent || event);
-              this.playStopAudio(stop, { first: isFirstStop, last: isLastStop });
-            });
-          });
         }
 
         this.currentLabels.push({
