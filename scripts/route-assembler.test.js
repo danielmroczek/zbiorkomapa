@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assemble } from './route-assembler.js';
+import { assemble, collectEndpoints } from './route-assembler.js';
 
 // --- Plain-row fixture helpers (the bundle shape node-gtfs adapter provides) ---
 
@@ -128,6 +128,82 @@ describe('assemble — representative trip', () => {
     expect(dir.shape_frequency).toBe(2);
     expect(dir.trip_count).toBe(3);
     expect(dir.stop_count).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Endpoints (Punkty końcowe)
+// ---------------------------------------------------------------------------
+
+describe('assemble — endpoints', () => {
+  it('collects distinct first/last stops across directions, most-travelled first', async () => {
+    const bundle = makeBundle({
+      tripsByRouteId: {
+        '1': [
+          trip('t1', '1', { direction_id: '0', service_id: 'S', shape_id: 'sh' }),
+          trip('t2', '1', { direction_id: '1', service_id: 'S', shape_id: 'sh' }),
+        ],
+      },
+      stoptimesByTripId: {
+        // direction 1 serves the busier a↔c pair; b only appears once.
+        t1: [stoptime('t1', 'a', 1), stoptime('t1', 'b', 2)],
+        t2: [stoptime('t2', 'b', 1), stoptime('t2', 'c', 2), stoptime('t2', 'c', 3)],
+      },
+      stopsByStopId: { a: [stop('a', 'Alfa')], b: [stop('b', 'Beta')], c: [stop('c', 'Gamma')] },
+    });
+
+    const [route] = await assembleDefault(bundle);
+    // Dedup across directions: 'Beta' is last of dir 0 and first of dir 1, listed once.
+    const endpoints = collectEndpoints(route.directions);
+    expect(endpoints).toEqual(['Beta', 'Alfa', 'Gamma']);
+    expect(new Set(endpoints).size).toBe(endpoints.length);
+  });
+
+  it('breaks equal-trip ties alphabetically', async () => {
+    const bundle = makeBundle({
+      tripsByRouteId: {
+        '1': [
+          trip('t1', '1', { direction_id: '0', service_id: 'S', shape_id: 'sh' }),
+          trip('t2', '1', { direction_id: '1', service_id: 'S', shape_id: 'sh' }),
+        ],
+      },
+      stoptimesByTripId: {
+        t1: [stoptime('t1', 'a', 1), stoptime('t1', 'b', 2)],
+        t2: [stoptime('t2', 'b', 1), stoptime('t2', 'a', 2)],
+      },
+      stopsByStopId: { a: [stop('a', 'Zawada')], b: [stop('b', 'Buk')] },
+    });
+
+    const [route] = await assembleDefault(bundle);
+    expect(collectEndpoints(route.directions)).toEqual(['Buk', 'Zawada']);
+  });
+
+  it('counts a loop direction once, not once per terminus', () => {
+    const dirs = [
+      // Loop: first_stop === last_stop, so a double count would give Zeta 20.
+      { first_stop: 'Zeta', last_stop: 'Zeta', trip_count: 10 },
+      { first_stop: 'Alfa', last_stop: 'Beta', trip_count: 10 },
+    ];
+    // All equal on trips, so the tie-break (alphabetical) decides the order.
+    expect(collectEndpoints(dirs)).toEqual(['Alfa', 'Beta', 'Zeta']);
+  });
+
+  it('yields a single endpoint for a loop route', async () => {
+    const bundle = makeBundle({
+      stoptimesByTripId: {
+        // The return platform has its own stop_id (GTFS common) but the same name.
+        t1: [stoptime('t1', 'a', 1), stoptime('t1', 'b', 2), stoptime('t1', 'a2', 3)],
+      },
+      stopsByStopId: {
+        a: [stop('a', 'Początek')],
+        b: [stop('b', 'Środek')],
+        a2: [stop('a2', 'Początek')],
+      },
+    });
+
+    const [route] = await assembleDefault(bundle);
+    expect(route.directions[0].is_loop).toBe(true);
+    expect(collectEndpoints(route.directions)).toEqual(['Początek']);
   });
 });
 

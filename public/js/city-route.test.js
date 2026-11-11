@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createCityRouteMixin } from './city-route.js';
+import { createCityRouteMixin, formatRouteLabel } from './city-route.js';
 
 // Minimal harness: just the nav pointer logic, no fetch/map.
 function makeNav() {
@@ -25,6 +25,45 @@ function makeNav() {
   };
   return obj;
 }
+
+describe('formatRouteLabel', () => {
+  it('shows every endpoint when they fit the budget', () => {
+    const { label, fullLabel } = formatRouteLabel({
+      short_name: '911', type: 'BUS', endpoints: ['Biedrusko/Park', 'Rondo Śródka'],
+    });
+    expect(label).toBe('🚌 911 · Biedrusko/Park · Rondo Śródka');
+    expect(fullLabel).toBe('🚌 911 · Biedrusko/Park · Rondo Śródka');
+  });
+
+  it('caps at three endpoints and summarises the rest as +N', () => {
+    const endpoints = ['AWF', 'Katedra', 'TPV', 'Słowiańska', 'Londyńska', 'Dworcowa'];
+    const { label, fullLabel } = formatRouteLabel({ short_name: '113', type: 'BUS', endpoints });
+    expect(label).toBe('🚌 113 · AWF · Katedra · TPV +3');
+    expect(fullLabel).toBe(`🚌 113 · ${endpoints.join(' · ')}`); // full list survives in the tooltip
+  });
+
+  it('drops whole endpoints instead of cutting names when over budget', () => {
+    const endpoints = ['Os. Sobieskiego', 'Suchy Las/Teren Aktywnej Edukacji i Sportu II'];
+    const { label } = formatRouteLabel({ short_name: '902', type: 'BUS', endpoints });
+    // 15 + 2 + 45 = 62 > 60, so the second name is dropped whole, never cut.
+    expect(label).toBe('🚌 902 · Os. Sobieskiego +1');
+    expect(label).not.toContain('…');
+  });
+
+  it('still reports the hidden endpoints when none fit', () => {
+    const endpoints = ['Suchy Las/Teren Aktywnej Edukacji i Sportu (Osiedle Leśne Północ)'];
+    const { label, fullLabel } = formatRouteLabel({ short_name: '902', type: 'TRAM', endpoints });
+    expect(label).toBe('🚋 902 · +1');
+    expect(fullLabel).toBe(`🚋 902 · ${endpoints[0]}`);
+  });
+
+  it('falls back to just the line when endpoints are missing', () => {
+    expect(formatRouteLabel({ short_name: '5', type: 'TRAM' }))
+      .toEqual({ label: '🚋 5', fullLabel: '🚋 5' });
+    expect(formatRouteLabel({ short_name: '5', type: 'TRAM', endpoints: [] }))
+      .toEqual({ label: '🚋 5', fullLabel: '🚋 5' });
+  });
+});
 
 describe('advanceNav / flushNav', () => {
   beforeEach(() => vi.useFakeTimers());
