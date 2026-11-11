@@ -11,6 +11,7 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 - obsługa wielu miast (Poznań, Świnoujście, Gorzów Wielkopolski, Nowy Tomyśl) z łatwą możliwością dodawania kolejnych
 - przeglądanie tras tramwajowych i autobusowych
 - wybór linii oraz kierunku jazdy
+- podgląd punktów końcowych linii już na liście wyboru (np. `911 · Biedrusko/Park · Rondo Śródka`); przy wielu wariantach lista skraca się do trzech i kończy licznikiem `+N`, a pełna lista jest w podpowiedzi pola
 - podgląd długości trasy i liczby przystanków
 - odtwarzanie nagrań głosowych dla przystanków (miasta z nagraniami) lub TTS (miasta bez nagrań)
 - **przejazd automatyczny** — animacja pojazdu wzdłuż trasy z ogłoszeniami głosowymi na przystankach (Spacja lub przycisk ▶)
@@ -41,6 +42,7 @@ Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
 ## Struktura projektu
 
 - `cities.json` — konfiguracja miast (GTFS URL, audio source, TTS lang)
+- `routes.json` — indeks linii danej miejscowości (numer, typ, kolor, liczba kierunków, `endpoints` = punkty końcowe) plus `map_center` centroidy przystanków
 - `data/{city-slug}/` — pliki GTFS oraz mapowania audio per miasto
 - `public/dist/{city-slug}/` — wygenerowane dane tras per miasto
 - `public/dist/cities.json` — konfiguracja miast dla frontendu

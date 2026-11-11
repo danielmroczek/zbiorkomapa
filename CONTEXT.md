@@ -11,6 +11,12 @@ Publiczny numer obsługiwany przez przewoźnika (np. „702"), w ramach którego
 ## Kierunek (Direction)
 Jeden przebieg linii — od pierwszego przystanku do ostatniego. Linia ma co najmniej dwa kierunki (tam i z powrotem).
 
+## Punkt końcowy (Terminus)
+Przystanek, na którym kończy się lub zaczyna Kierunek Linii. Zbiór Punktów końcowych Linii to suma unikalnych przystanków pierwszych i ostatnich wszystkich jej Kierunków — Linia z Kierunkami A→B i B→A ma dwa Punkty końcowe: A i B.
+
+## Pojazd (Vehicle)
+Konkretny autobus lub tramwaj obsługujący Przejazd na danej Linii. Ma własny numer taborowy; nie należy go mylić z numerem Linii („911").
+
 ## Przystanek (Stop)
 Punkt zatrzymania pojazdu na trasie. Ma nazwę, współrzędne oraz opcjonalnie strefę taryfową (A/B/C/D) i oznaczenie audio (kolejność odczytu nazwy).
 

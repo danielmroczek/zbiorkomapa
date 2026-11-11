@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 2026-11-11
+- Lista wyboru linii pokazuje punkty końcowe: przy numerze linii (z ikoną 🚌/🚋 zamiast słowa „Autobus"/„Tramwaj") widoczne są przystanki końcowe, np. `911 · Biedrusko/Park · Rondo Śródka`. Lista skraca się do trzech punktów i kończy licznikiem `+N` (całe punkty są pomijane, nigdy nie ucinamy nazwy w środku), a pełna lista jest w podpowiedzi pola — przy 233 nazwach i 261 liniach 90% etykiet mieści się bez `+N`.
+- Indeks `routes.json` ma nowe pole `endpoints`: unikalne, posortowane punkty końcowe linii (kolejność wg liczby przejazdów dotykających przystanku, remisy alfabetycznie).
+
 ## 2026-11-10
 - Poprawka: klik na etykietę przystanku czytał nazwę dwa razy (TTS) — interaktywny tooltip jest event-parentem swojego markera, więc klik w etykietę wywoływał i własny listener etykiety, i `click` markera. Etykieta nie ma już osobnego handlera; zapowiedź idzie przez `click` markera.
 
