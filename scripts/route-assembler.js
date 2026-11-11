@@ -262,6 +262,32 @@ async function buildDirection(routeId, dirTrips, inventory, audio, routeSegments
 }
 
 /**
+ * Collect the line's Punkty końcowe (termini): the distinct first/last stops
+ * across all its directions. Ordered by importance — the total number of trips
+ * that start or end there — then alphabetically. This is the definition of
+ * "important" for the picker label, not an estimate.
+ *
+ * ponytail: trip_count is the representative direction's count, not a tally of
+ * every trip in it, so a stop shared by several variant directions inherits the
+ * counts of the variant that won shape dominance. Fine for ordering a label
+ * hint; the upgrade path is per-trip tallying in groupTripsByDirection.
+ */
+export function collectEndpoints(directions) {
+  const tripsByStop = new Map();
+  for (const d of directions) {
+    const trips = Number(d.trip_count) || 0;
+    // A loop direction has the same stop as first and last — count it once.
+    for (const name of new Set([d.first_stop, d.last_stop])) {
+      if (!name) continue;
+      tripsByStop.set(name, (tripsByStop.get(name) || 0) + trips);
+    }
+  }
+  return [...tripsByStop.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "pl"))
+    .map(([name]) => name);
+}
+
+/**
  * Build the full per-route JSON object.
  *
  * mergedDirections: when GTFS splits one logical line into multiple route_ids

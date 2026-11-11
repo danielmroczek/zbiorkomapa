@@ -30,10 +30,48 @@ function badgeLook(routeMeta, hexToRgb) {
 }
 
 // Panel title line, shared by full load and the arrow-key preview.
+function routeEmoji(type) {
+  return type === 'TRAM' ? '🚋' : '🚌';
+}
+
 function panelTitleFor(routeMeta, cityName) {
   const typeName = routeMeta.type === 'TRAM' ? 'Tramwaj' : 'Autobus';
-  const emoji = routeMeta.type === 'TRAM' ? '🚋' : '🚌';
+  const emoji = routeEmoji(routeMeta.type);
   return { emoji, title: `${emoji} ${typeName} nr ${routeMeta.short_name} — ${cityName}` };
+}
+
+// Line <select> label: "🚌 911 · Biedrusko/Park · Rondo Śródka".
+// The closed control clips the tail, so the real target is the opened list;
+// the char budget only stops the popup from sprawling. Endpoints are never cut
+// mid-name — the list shrinks by whole entries and the rest becomes "+N".
+// Middle dot, not a comma: stop names are dense (117 of 233 contain "/"), and
+// "·" is visually lighter while staying distinct from the "." inside names.
+const LABEL_SEPARATOR = ' · ';
+const LABEL_MAX_ENDPOINTS = 3;
+const LABEL_ENDPOINT_CHARS = 60;
+
+export function formatRouteLabel(routeMeta) {
+  const prefix = `${routeEmoji(routeMeta.type)} ${routeMeta.short_name}`;
+  const endpoints = Array.isArray(routeMeta.endpoints) ? routeMeta.endpoints : [];
+  if (endpoints.length === 0) return { label: prefix, fullLabel: prefix };
+
+  const shown = [];
+  let usedChars = 0;
+  for (const name of endpoints) {
+    if (shown.length >= LABEL_MAX_ENDPOINTS) break;
+    const addedChars = shown.length === 0 ? name.length : name.length + LABEL_SEPARATOR.length;
+    if (usedChars + addedChars > LABEL_ENDPOINT_CHARS) break;
+    usedChars += addedChars;
+    shown.push(name);
+  }
+
+  const hidden = endpoints.length - shown.length;
+  const marker = hidden > 0 ? `+${hidden}` : '';
+  const body = [shown.join(LABEL_SEPARATOR), marker].filter(Boolean).join(' ');
+  return {
+    label: `${prefix}${LABEL_SEPARATOR}${body}`,
+    fullLabel: `${prefix}${LABEL_SEPARATOR}${endpoints.join(LABEL_SEPARATOR)}`,
+  };
 }
 
 export function createCityRouteMixin() {
@@ -126,10 +164,10 @@ export function createCityRouteMixin() {
         const response = await fetch(`./dist/${this.currentCitySlug}/routes.json`);
         const data = await response.json();
         const routeList = Array.isArray(data) ? data : (data.routes || []);
-        this.routes = routeList.map(r => ({
-          ...r,
-          displayName: `${r.short_name} (${r.type === 'TRAM' ? 'Tramwaj' : 'Autobus'})`,
-        }));
+        this.routes = routeList.map(r => {
+          const { label, fullLabel } = formatRouteLabel(r);
+          return { ...r, displayName: label, labelTitle: fullLabel };
+        });
         if (!Array.isArray(data) && data.map_center) {
           this.map.setView(data.map_center, 13);
         }

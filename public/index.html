@@ -62,7 +62,8 @@
     <div class="route-controls">
       <div class="control-group">
         <label for="route-select">Wybierz linię:</label>
-        <select id="route-select" x-model="selectedRouteId" @change="onRouteChange()">
+        <select id="route-select" x-model="selectedRouteId" @change="onRouteChange()"
+          :title="routes.find(r => r.route_id === selectedRouteId)?.labelTitle ?? ''">
           <option value="" disabled x-show="routes.length === 0">Ładowanie...</option>
           <template x-for="route in routes" :key="route.route_id">
             <option :value="route.route_id"

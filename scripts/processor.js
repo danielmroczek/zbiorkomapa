@@ -37,7 +37,7 @@ import {
 } from "gtfs";
 import { routeSegments } from "./osrm-router.js";
 import { createAudioMatcher } from "./audio-matcher.js";
-import { assemble } from "./route-assembler.js";
+import { assemble, collectEndpoints } from "./route-assembler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -269,6 +269,7 @@ async function processCity(cityConfig, { force }) {
         agency_name: r.agency_name,
         direction_count: r.directions.length,
         total_stops: r.directions.reduce((sum, d) => sum + d.stops.length, 0),
+        endpoints: collectEndpoints(r.directions),
         feed_info: r.feed_info,
       }))
       .sort((a, b) =>
