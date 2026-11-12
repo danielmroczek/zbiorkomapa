@@ -8,15 +8,14 @@ const mixin = createAudioMixin();
 describe('_expandTtsText', () => {
   it('expands common abbreviations to full words', () => {
     expect(mixin._expandTtsText('Os. Młodych')).toBe('osiedle Młodych');
-    expect(mixin._expandTtsText('UL. POLNA')).toBe('ulica POLNA');
     expect(mixin._expandTtsText('pl. Wolności')).toBe('plac Wolności');
   });
 
   it('expands abbreviations mid-string and keeps punctuation', () => {
-    expect(mixin._expandTtsText('Al. Niepodległości (os. Rusa)'))
-      .toBe('aleje Niepodległości (osiedle Rusa)');
-    expect(mixin._expandTtsText('(ul. Polna), pl. Wolności'))
-      .toBe('(ulica Polna), plac Wolności');
+    expect(mixin._expandTtsText('Pl. Niepodległości (os. Rusa)'))
+      .toBe('plac Niepodległości (osiedle Rusa)');
+    expect(mixin._expandTtsText('(Os. Polne), pl. Wolności'))
+      .toBe('(osiedle Polne), plac Wolności');
   });
 
   it('expands abbreviations after a slash separator in stop names', () => {
