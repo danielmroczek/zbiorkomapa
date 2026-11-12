@@ -4,7 +4,7 @@
   "description": "Interaktywna wizualizacja tras komunikacji miejskiej w Poznaniu",
   "license": "MIT",
   "author": "Daniel Mroczek",
-  "homepage": "https://danielmroczek.github.io/zbiorkomapa/",
+  "homepage": "https://zbiorkomapa.github.io/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/danielmroczek/zbiorkomapa.git"
