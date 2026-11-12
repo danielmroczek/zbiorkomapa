@@ -60,6 +60,13 @@ This repository builds an interactive visualizer for public transport routes. Th
 
 There is currently no dedicated `npm start` script in package.json. For local preview, serve the static files from public/ with any simple static server.
 
+## Deployment
+
+- Strona produkcyjna: <https://zbiorkomapa.github.io/> — serwowana z repo `zbiorkomapa/zbiorkomapa.github.io`, które jest **tylko artefaktem** (każdy deploy nadpisuje całą historię force-pushem, nie edytuj go ręcznie).
+- Kod i build żyją wyłącznie w tym repo; `.github/workflows/deploy.yml` buduje `public/` i wypycha je do repo docelowego.
+- Uwierzytelnianie: fine-grained PAT w sekrecie `DEPLOY_TOKEN` (Contents: Read & Write na repo docelowym). Deploy keys są przez GitHuba zablokowane dla tego repo.
+- GitHub Pages w `danielmroczek/zbiorkomapa` jest wyłączone — nie przywracaj tam `deploy-pages`, inaczej powstaną dwie konkurencyjne publikacje.
+
 ## Adding a new city
 
 1. Add an entry to `cities.json` with `name`, `gtfsUrl`, `audioSource` ("recordings" or "tts"), and `ttsLang`.

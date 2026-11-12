@@ -4,7 +4,7 @@ Zbiorkomapa to interaktywna wizualizacja tras komunikacji miejskiej. Projekt ł�
 
 ## Demo
 
-Wypróbuj: [Zbiorkomapa](https://danielmroczek.github.io/zbiorkomapa/)
+Wypróbuj: [Zbiorkomapa](https://zbiorkomapa.github.io/)
 
 ## Najważniejsze funkcje
 
