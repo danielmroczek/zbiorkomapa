@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import * as turf from '@turf/turf';
 import { createRide } from './ride-core.js';
 
 // --- A minimal, deterministic Turf fake for a horizontal straight line. ---
@@ -196,5 +197,40 @@ describe('createRide — rendering state during travel', () => {
     expect(typeof state.speed).toBe('number');
     expect(state.speed).toBeGreaterThanOrEqual(0);
     expect(state.speed).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('createRide — sector on overlapping (pocket) shapes', () => {
+  // Out-and-back shape: east from lng 0 to 10, then west back to lng 2.
+  // The return leg overlaps the outbound one, so a vehicle on the way back
+  // sits geometrically on both passes at once.
+  const shape = [[0, 0], [0, 10], [0, 2]]; // Leaflet [lat,lng]
+  const stops = [
+    { stop_lat: 0, stop_lon: 0 },  // start
+    { stop_lat: 0, stop_lon: 10 }, // pocket end
+    { stop_lat: 0, stop_lon: 5 },  // snapped forward onto the return leg
+  ];
+
+  function advanceUntilEvents(ride, events, count) {
+    for (let i = 0; i < 5000 && events.length < count; i++) ride.advance(0.25);
+    expect(events.length).toBeGreaterThanOrEqual(count);
+  }
+
+  it('points along the return pass, not the earlier outbound pass', () => {
+    const events = [];
+    const ride = createRide(turf);
+    ride.start({ shape, stops, speed: 'fast', onStopReached: (i) => events.push(i) });
+
+    ride.advance(0); // hold at stop 0
+    ride.release();
+
+    expect(ride.advance(0.5).sector).toBe('right'); // outbound, heading east
+
+    advanceUntilEvents(ride, events, 2); // reach the pocket end
+    ride.release();                      // start the return leg
+
+    const returning = ride.advance(0.5);
+    expect(returning.position[1]).toBeLessThan(10); // moving west
+    expect(returning.sector).toBe('left');
   });
 });

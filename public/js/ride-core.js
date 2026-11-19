@@ -52,14 +52,23 @@ export function createRide(turf) {
     return { coords, latLngs };
   }
 
-  // Vehicle orientation sector at the tip of a slice (mirrors ride.js logic).
+  // Vehicle orientation sector at the tip of the traveled slice. Uses the
+  // slice itself (the path actually driven), never `nearestPointOnLine` on the
+  // whole shape: on routes that double back over the same street (pocket
+  // detours) the nearest point snaps to the earlier, opposite pass and flips
+  // the icon (bus drives west, icon points east).
   function computeSector(coords) {
     const lastCoord = coords[coords.length - 1]; // [lng, lat]
-    const nearest = turf.nearestPointOnLine(st.turfLine, turf.point(lastCoord));
-    let prevIdx = nearest.properties.index;
-    if (prevIdx > 0 && nearest.properties.location < 0.002) prevIdx--;
-    const prevVertex = st.turfLine.geometry.coordinates[Math.max(0, prevIdx)];
-    const bearing = turf.bearing(turf.point(prevVertex), turf.point(lastCoord));
+    let prevIdx = coords.length - 2;
+    while (
+      prevIdx >= 0 &&
+      coords[prevIdx][0] === lastCoord[0] &&
+      coords[prevIdx][1] === lastCoord[1]
+    ) {
+      prevIdx--; // skip duplicated vertices at the slice tip
+    }
+    if (prevIdx < 0) return 'left';
+    const bearing = turf.bearing(turf.point(coords[prevIdx]), turf.point(lastCoord));
     return vehicleSector(bearing);
   }
 

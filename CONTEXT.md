@@ -29,7 +29,7 @@ Symulowana jazda pojazdu od początku do końca kształtu, przystanek po przysta
 ### Mechanika przejazdu (Ride mechanics)
 Czysta matematyka jazdy, niezależna od mapy i audio:
 - **Prędkość po segmencie (segment speed)** — profil przyspieszanie → jazda → hamowanie (trapez) dla jednego odcinka między przystankami.
-- **Sektor pojazdu (vehicle sector)** — uznaniowa kategoria zwrotu pojazdu na podstawie kierunku geograficznego (`left` / `right` / `oncoming`).
+- **Sektor pojazdu (vehicle sector)** — uznaniowa kategoria zwrotu pojazdu na podstawie kierunku geograficznego (`left` / `right` / `oncoming`), liczona z ostatniego odcinka faktycznie przejechanego śladu (a nie z najbliższego punktu całego kształtu) — inaczej na trasach z wjazdami „kieszeniowymi" (podwójny przejazd tą samą ulicą) sektor brałby kierunek wcześniejszego przejazdu.
 - **Przyłożenie przystanków (stop snapping)** — przypisanie każdemu przystankowi punktu najbliższego na kształcie oraz jego odległości od początku trasy.
 
 ## Ślad przejazdu (Trail)
