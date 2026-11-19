@@ -182,6 +182,12 @@ export function createAudioMatcher({ slug, dataDir, audioSource }) {
   let audioData = [];
   if (fs.existsSync(audioPath)) {
     audioData = parseCSV(fs.readFileSync(audioPath, "utf8"));
+  } else {
+    // A missing mapping used to fail silently: every stop got audio_id: null,
+    // so the frontend fell back to TTS mid-ride with no hint why.
+    console.warn(
+      `  UWAGA: brak ${audioPath} — wszystkie przystanki dostaną audio_id: null. Uruchom "npm run download:audio".`,
+    );
   }
 
   if (slug === "poznan") {
