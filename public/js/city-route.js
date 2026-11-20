@@ -192,6 +192,28 @@ export function createCityRouteMixin() {
       }
     },
 
+    // Dice button / R key: random line + random direction, like the first-load pick.
+    async randomPick() {
+      if (this.routes.length === 0) return;
+      // Drop a pending arrow-key step, otherwise the keyup flushNav would load it
+      // after us and silently undo the random pick.
+      clearTimeout(this.navDebounceTimer);
+      this.pendingNav = null;
+      const pool = this.routes.length > 1
+        ? this.routes.filter(r => r.route_id !== this.selectedRouteId)
+        : this.routes;
+      const route = pool[Math.floor(Math.random() * pool.length)];
+      this.selectedRouteId = route.route_id;
+      await this.onRouteChange();
+
+      if (this.currentRoute?.route_id !== route.route_id || this.directions.length < 2) return;
+      const others = this.directions
+        .map((_, i) => i)
+        .filter(i => i !== this.selectedDirectionIdx);
+      this.selectedDirectionIdx = others[Math.floor(Math.random() * others.length)];
+      await this.onDirectionChange();
+    },
+
     // After choosing from a combobox, drop focus so Space (the ride toggle)
     // never re-opens the dropdown instead of starting/pausing the ride.
     blurSelect() {

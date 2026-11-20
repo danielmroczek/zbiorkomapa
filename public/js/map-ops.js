@@ -51,6 +51,9 @@ export function createMapOpsMixin() {
         } else if (e.key === ' ') {
           e.preventDefault();
           this.togglePlayPause();
+        } else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) {
+          e.preventDefault();
+          this.randomPick();
         }
       });
 

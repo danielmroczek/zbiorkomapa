@@ -56,6 +56,10 @@
         <button class="help-btn" @click="showHelpModal = true">
           ❓ Pomoc
         </button>
+        <button class="dice-btn" @click="randomPick()" title="Losowa linia i kierunek (R)"
+          aria-label="Wylosuj linię i kierunek">
+          🎲 Losuj
+        </button>
       </div>
     </div>
     <div class="panel-scroll">
@@ -172,7 +176,8 @@
       <div class="keyboard-hint">
         <strong>Skróty:</strong><br>
         <kbd>→</kbd> / <kbd>Shift+</kbd><kbd>&gt;</kbd> Następny<br>
-        <kbd>←</kbd> / <kbd>Shift+</kbd><kbd>&lt;</kbd> Poprzedni<br><br>
+        <kbd>←</kbd> / <kbd>Shift+</kbd><kbd>&lt;</kbd> Poprzedni<br>
+        <kbd>R</kbd> Losuj linię i kierunek<br><br>
         <strong>Audio:</strong><br>
         <kbd>Klik</kbd> na przystanek lub etykietę<br><br>
         <strong>Przejazd:</strong><br>
