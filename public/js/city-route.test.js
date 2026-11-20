@@ -124,3 +124,68 @@ describe('advanceNav / flushNav', () => {
     expect(app.selectedDirectionIdx).toBe(0);
   });
 });
+
+describe('randomPick', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function makeRandom(dirCount = 2) {
+    return {
+      ...createCityRouteMixin(),
+      routes: [
+        { route_id: 'A', direction_count: 1 },
+        { route_id: 'B', direction_count: dirCount },
+      ],
+      selectedRouteId: 'A',
+      selectedDirectionIdx: 0,
+      currentRoute: { route_id: 'A' },
+      directions: [],
+      directionChangeCount: 0,
+      // Mimic the real flow: a route load replaces currentRoute/directions.
+      async onRouteChange() {
+        this.currentRoute = { route_id: this.selectedRouteId };
+        this.directions = Array.from({ length: dirCount }, () => ({}));
+      },
+      onDirectionChange() {
+        this.directionChangeCount++;
+      },
+    };
+  }
+
+  it('picks another line and a different direction', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const app = makeRandom(2);
+    await app.randomPick();
+    expect(app.selectedRouteId).toBe('B'); // A excluded from the pool
+    expect(app.selectedDirectionIdx).toBe(1); // 0 excluded from the pool
+    expect(app.directionChangeCount).toBe(1);
+  });
+
+  it('leaves the direction alone when the line has only one', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const app = makeRandom(1);
+    await app.randomPick();
+    expect(app.selectedRouteId).toBe('B');
+    expect(app.directionChangeCount).toBe(0);
+  });
+
+  it('keeps the old direction when the picked line fails to load', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const app = makeRandom(2);
+    app.selectedDirectionIdx = 1;
+    // Load failure: currentRoute/directions keep the previously shown route.
+    app.onRouteChange = async () => {};
+    await app.randomPick();
+    expect(app.selectedRouteId).toBe('B');
+    expect(app.selectedDirectionIdx).toBe(1);
+    expect(app.directionChangeCount).toBe(0);
+  });
+
+  it('drops a pending arrow-key nav so it cannot override the pick', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const app = makeRandom(2);
+    app.pendingNav = { routeIndex: 0, dirIndex: 1 };
+    await app.randomPick();
+    expect(app.pendingNav).toBeNull();
+    expect(app.selectedRouteId).toBe('B');
+  });
+});
