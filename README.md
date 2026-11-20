@@ -11,6 +11,7 @@ Wypróbuj: [Zbiorkomapa](https://zbiorkomapa.github.io/)
 - obsługa wielu miast (Poznań, Świnoujście, Gorzów Wielkopolski, Nowy Tomyśl) z łatwą możliwością dodawania kolejnych
 - przeglądanie tras tramwajowych i autobusowych
 - wybór linii oraz kierunku jazdy
+- losowanie linii i kierunku jednym kliknięciem (przycisk **Losuj** w nagłówku panelu) lub klawiszem `R`
 - podgląd punktów końcowych linii już na liście wyboru (np. `911 · Biedrusko/Park · Rondo Śródka`); przy wielu wariantach lista skraca się do trzech i kończy licznikiem `+N`, a pełna lista jest w podpowiedzi pola
 - podgląd długości trasy i liczby przystanków
 - odtwarzanie nagrań głosowych dla przystanków (miasta z nagraniami) lub TTS (miasta bez nagrań)

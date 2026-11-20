@@ -1,5 +1,8 @@
 # CHANGELOG
 
+## 2026-11-20
+- Nowy przycisk „Losuj" w nagłówku panelu (obok „Pomoc") oraz skrót `R` losują linię i kierunek: wybierana jest inna linia niż aktualna, a gdy linia ma kilka kierunków — inny niż bieżący. Przytrzymanie klawisza nie przelosowuje (auto-repeat ignorowany), a zaległy krok nawigacji strzałkami jest czyszczony, żeby nie nadpisać losowania. Pole „Wybierz linię" wróciło do pełnej szerokości.
+
 ## 2026-11-19
 - Poprawka: odtwarzanie nagrań nazw przystanków w Poznaniu działało tylko dla kilku przystanków (reszta leciała z TTS). Matcher audio czyta `data/{miasto}/audio.csv`, a w lokalnym środowisku mapa nagrań leżała tylko w starym `data/audio.csv` — brak pliku nie dawał żadnego ostrzeżenia, więc wszystkie przystanki dostawały `audio_id: null`. Plik przeniesiony do `data/poznan/audio.csv` i przetworzony ponownie (dopasowanie 9241/10043 przystanków, jak na produkcji); brak mapy jest teraz ostrzeżeniem w logu procesora.
 - Poprawka: ikonka pojazdu na wizualizacji przejazdu miała zły kierunek na trasach z wjazdami „kieszeniowymi" (odcinek przejeżdżany dwukrotnie w przeciwnych kierunkach). Sektor pojazdu liczony jest teraz z ostatniego odcinka faktycznie przejechanego śladu, a nie z punktu najbliższego całemu kształtowi — ten potrafił trafić w wcześniejszy, przeciwny przejazd tej samej ulicy (autobus jechał w lewo, ikonka wskazywała w prawo).
